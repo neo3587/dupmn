@@ -100,7 +100,7 @@ function cmd_install() {
 	$coin_daemon -datadir=$new_folder -daemon
 
 	sed -i "/$new_folder/d" /var/spool/cron/crontabs/root
-	echo "@reboot $coin_path/$coin_daemon -datadir=$new_folder -daemon" >> /var/spool/cron/crontabs/root
+	echo "@reboot $coin_path$coin_daemon -datadir=$new_folder -daemon" >> /var/spool/cron/crontabs/root
 
 	sed -i "/^$1=/s/=.*/=$count/" .dupmn/dupmn.conf
 
