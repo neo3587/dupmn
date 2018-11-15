@@ -1,0 +1,6 @@
+COIN_NAME="CARDbuyers"
+COIN_PATH="/usr/local/bin/"
+COIN_DAEMON="CARDbuyersd"
+COIN_CLI="CARDbuyers-cli"
+COIN_FOLDER=".CARDbuyers"
+COIN_CONFIG="CARDbuyers.conf"
