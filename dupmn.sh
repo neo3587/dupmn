@@ -164,6 +164,7 @@ function cmd_uninstall() {
 	local coin_cli="${prof[COIN_CLI]}"
 	local coin_daemon="${prof[COIN_DAEMON]}"
 	local coin_folder="${prof[COIN_FOLDER]}"
+	local coin_config="${prof[COIN_CONFIG]}"
 
 	if [ $count = 0 ]; then 
 		echo -e "There aren't duplicated $1 masternodes to remove"
@@ -185,6 +186,8 @@ function cmd_uninstall() {
 				echo -e "setting ${CYAN}instance $i${NC} as ${CYAN}instance $(($i-1))${NC}..."
 				$coin_cli -datadir=$coin_folder$i stop
 				sleep 3
+				local rpc_change=$(($(grep -Po '(?<=rpcport=).*' $coin_folder$i/$coin_config)-1))
+				sed -i "/^rpcport=/s/=.*/=$rpc_change/" $coin_folder$i/$coin_config
 				mv $coin_folder$i $coin_folder$(($i-1))
 				sleep 1
 				$coin_daemon -datadir=$coin_folder$(($i-1)) -daemon
