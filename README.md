@@ -54,6 +54,13 @@ Or you can even uninstall them all (except the 'main instance') with:
 ```
 dupmn uninstall CARDbuyers all
 ```
+The new masternode instances will use the same IP and port, so the `masternode.conf` will look like this:
+```
+MN01   123.45.67.89:48451 MASTERNODE_PRIVATE_KEY_OF_MAIN_MN TX_OF_MAIN_MN TX_ID_OF_MAIN_MN
+MN01_1 123.45.67.89:48451 MASTERNODE_PRIVATE_KEY_OF_DUPMN_1 TX_OF_DUPMN_1 TX_ID_OF_DUPMN_1
+MN01_2 123.45.67.89:48451 MASTERNODE_PRIVATE_KEY_OF_DUPMN_2 TX_OF_DUPMN_2 TX_ID_OF_DUPMN_2
+MN01_3 123.45.67.89:48451 MASTERNODE_PRIVATE_KEY_OF_DUPMN_3 TX_OF_DUPMN_3 TX_ID_OF_DUPMN_3
+```
 
 # Additional
 
