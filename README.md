@@ -7,7 +7,6 @@ A script to easily create and manage multiple masternodes of the same coin in th
 On your VPS type:
 ```
 wget -q https://raw.githubusercontent.com/neo3587/dupmn/master/dupmn_install.sh
-wget -q https://raw.githubusercontent.com/neo3587/dupmn/master/dupmn.sh
 bash dupmn_install.sh
 ```
 Then you can remove the installer script if you want: `rm -rf dupmn_install.sh`
