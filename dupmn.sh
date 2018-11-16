@@ -1,5 +1,10 @@
 #!/bin/bash
 
+# TODO:
+#  - Find a way to keep the consistency without moving the instance numbers on a uninstall
+#  - Add commands to manage a swapfile (?)
+#
+
 CYAN='\033[1;36m'
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -44,6 +49,32 @@ function cmd_profadd() {
 	echo -e "$2 profile successfully added, use ${GREEN}dupmn install $2${NC} to create a new instance of the masternode"
 }
 
+function cmd_profdel() {
+
+	if [ ! -f ".dupmn/$1" ]; then
+		echo -e "$1 profile doesn't exists"
+		exit
+	fi
+
+	local -A conf=$(get_conf .dupmn/dupmn.conf)
+	local -A prof=$(get_conf .dupmn/$1)
+
+	local count=$((${conf[$1]}))
+	local coin_daemon=${prof[COIN_DAEMON]}
+	local coin_cli=${prof[COIN_CLI]}
+
+	if [ $(($count)) -gt $((0)) ]; then
+		cmd_uninstall $1 all
+	fi
+	sed -i "/$1\=/d" ".dupmn/dupmn.conf"
+
+	rm -rf /usr/bin/$coin_daemon-0
+	rm -rf /usr/bin/$coin_daemon-all
+	rm -rf /usr/bin/$coin_cli-0
+	rm -rf /usr/bin/$coin_cli-all
+	rm -rf .dupmn/$1
+}
+
 function cmd_install() {
 	
 	if [ ! -f ".dupmn/$1" ]; then
@@ -84,10 +115,10 @@ function cmd_install() {
 	sed -i "/^listen=/s/=.*/=0/" $new_folder/$coin_config
 	sed -i "/^masternodeprivkey=/s/=.*/=$new_key/" $new_folder/$coin_config
 
-	echo -e "#\!/bin/bash\n$coin_cli \$@" > /usr/bin/$coin_cli-0
-	echo -e "#\!/bin/bash\n$coin_daemon \$@" > /usr/bin/$coin_daemon-0
-	echo -e "#\!/bin/bash\n$coin_cli -datadir=$new_folder \$@" > /usr/bin/$coin_cli-$count
-	echo -e "#\!/bin/bash\n$coin_daemon -datadir=$new_folder \$@" > /usr/bin/$coin_daemon-$count
+	echo -e "#!/bin/bash\n$coin_cli \$@" > /usr/bin/$coin_cli-0
+	echo -e "#!/bin/bash\n$coin_daemon \$@" > /usr/bin/$coin_daemon-0
+	echo -e "#!/bin/bash\n$coin_cli -datadir=$new_folder \$@" > /usr/bin/$coin_cli-$count
+	echo -e "#!/bin/bash\n$coin_daemon -datadir=$new_folder \$@" > /usr/bin/$coin_daemon-$count
 	echo -e "#!/bin/bash\nfor (( i=0; i<=$count; i++ )) do\n echo -e MN\$i:\n $coin_cli-\$i \$@\ndone" > /usr/bin/$coin_cli-all
 	echo -e "#!/bin/bash\nfor (( i=0; i<=$count; i++ )) do\n echo -e MN\$i:\n $coin_daemon-\$i \$@\ndone" > /usr/bin/$coin_daemon-all
 	chmod +x /usr/bin/$coin_cli-0
@@ -99,8 +130,20 @@ function cmd_install() {
 
 	$coin_daemon -datadir=$new_folder -daemon
 
-	sed -i "/$new_folder/d" /var/spool/cron/crontabs/root
-	echo "@reboot $coin_path$coin_daemon -datadir=$new_folder -daemon" >> /var/spool/cron/crontabs/root
+	echo -e "#!/bin/bash" \
+	"\n""### BEGIN INIT INFO" \
+	"\n""# Provides:          $1-$count-init" \
+	"\n""# Required-Start:    \$syslog" \
+	"\n""# Required-Stop:     \$syslog" \
+	"\n""# Default-Start:     2 3 4 5" \
+	"\n""# Default-Stop:      0 1 6" \
+	"\n""# Short-Description: $1-$count-init" \
+	"\n""# Description:" \
+	"\n""#" \
+	"\n""### END INIT INFO" \
+	"\n""$coin_path$coin_daemon -datadir=$coin_folder$count -daemon" > /etc/init.d/$1-$count-init
+	chmod +x /etc/init.d/$1-$count-init
+	update-rc.d $1-$count-init defaults
 
 	sed -i "/^$1=/s/=.*/=$count/" .dupmn/dupmn.conf
 
@@ -139,7 +182,8 @@ function cmd_uninstall() {
 		rm -rf /usr/bin/$coin_cli-$3
 		rm -rf /usr/bin/$coin_daemon-$3
 
-		sed -i "/$coin_folder$3/d" /var/spool/cron/crontabs/root
+		rm -rf /etc/init.d/$1-$3-init
+
 		sed -i "/^$1=/s/=.*/=$(($3-1))/" ".dupmn/dupmn.conf"
 
 		echo -e "#\!/bin/bash\nfor (( i=0; i<=$(($3-1)); i++ )) do\n $coin_cli-$i \$@\necho -e MN$i:\ndone" > /usr/bin/$coin_cli-all
@@ -189,7 +233,6 @@ function cmd_uninstall() {
 				local rpc_change=$(($(grep -Po '(?<=rpcport=).*' $coin_folder$i/$coin_config)-1))
 				sed -i "/^rpcport=/s/=.*/=$rpc_change/" $coin_folder$i/$coin_config
 				mv $coin_folder$i $coin_folder$(($i-1))
-				sleep 1
 				$coin_daemon -datadir=$coin_folder$(($i-1)) -daemon
 			done
 		fi
@@ -202,6 +245,8 @@ function cmd_help() {
 	echo -e "Options:\n" \
 			"  - dupmn profadd <prof_file> <prof_name>  Adds a profile with the given name that will be used to\n" \
 			"                                           create duplicates of the masternode\n" \
+			"  - dupmn profdel <prof_name>              Deletes the given profile name, this will uninstall too any\n" \
+			"                                           duplicated instance that uses this profile\n" \
 			"  - dupmn install <prof_name>              Install a new instance based on the parameters of the\n" \
 			"                                           given profile name\n" \
 			"  - dupmn list                             Shows the amount of duplicated instances of every masternode\n" \
@@ -215,7 +260,6 @@ function main() {
 	if [ -z "$1" ]; then
 		cmd_help
 		exit
-		echo -e ""
 	fi
 
 	case "$1" in
@@ -226,12 +270,19 @@ function main() {
 			fi
 			cmd_profadd "$2" "$3"
 			;;
+		"profdel")
+			if [ -z "$2" ]; then 
+				echo -e "dupmn profadd <prof_name> requires a profile name as parameter"
+				exit
+			fi
+			cmd_profdel "$2"
+			;;
 		"install") 
 			if [ -z "$2" ]; then
 				echo -e "dupmn install <coin_name> requires a coin name of an added profile as a parameter"
 				exit
 			fi
-			cmd_install $2
+			cmd_install "$2"
 			;;
 		"list") 
 			cmd_list
@@ -241,7 +292,7 @@ function main() {
 				echo -e "dupmn uninstall <coin_name> <param> requires a coin name and a number (or all) as parameters"
 				exit
 			fi
-			cmd_uninstall $2 $3
+			cmd_uninstall "$2" "$3"
 			;;
 		"help") 
 			cmd_help
