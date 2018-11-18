@@ -14,6 +14,7 @@ Then you can remove the installer script if you want: `rm -rf dupmn_install.sh`
 # Commands
 
 - `dupmn profadd <profile_file> <profile_name>` : Adds a profile with the given name that will be used to create duplicates of the masternode.
+- `dupmn profdel <profile_name>` : Deletes the saved profile with the given name and uninstalls the duplicated instances that uses that profile.
 - `dupmn install <profile_name>` : Install a new instance based on the parameters of the given profile name.
 - `dupmn list` : Shows the amount of duplicated instances of every masternode.
 - `dupmn uninstall <profile_name> <number>` : Uninstall the specified instance of the given profile name.
