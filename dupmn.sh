@@ -186,8 +186,8 @@ function cmd_uninstall() {
 
 		sed -i "/^$1=/s/=.*/=$(($3-1))/" ".dupmn/dupmn.conf"
 
-		echo -e "#\!/bin/bash\nfor (( i=0; i<=$(($3-1)); i++ )) do\n $coin_cli-$i \$@\necho -e MN$i:\ndone" > /usr/bin/$coin_cli-all
-		echo -e "#\!/bin/bash\nfor (( i=0; i<=$(($3-1)); i++ )) do\n $coin_daemon-$i \$@\necho -e MN$i:\ndone" > /usr/bin/$coin_daemon-all
+		echo -e "#!/bin/bash\nfor (( i=0; i<=$(($3-1)); i++ )) do\n echo -e MN\$i:\n $coin_cli-\$i \$@\ndone" > /usr/bin/$coin_cli-all
+		echo -e "#!/bin/bash\nfor (( i=0; i<=$(($3-1)); i++ )) do\n echo -e MN\$i:\n $coin_daemon-\$i \$@\ndone" > /usr/bin/$coin_daemon-all
 		chmod +x /usr/bin/$coin_cli-all
 		chmod +x /usr/bin/$coin_daemon-all
 
