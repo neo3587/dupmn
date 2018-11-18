@@ -19,6 +19,7 @@ Then you can remove the installer script if you want: `rm -rf dupmn_install.sh`
 - `dupmn list` : Shows the amount of duplicated instances of every masternode.
 - `dupmn uninstall <profile_name> <number>` : Uninstall the specified instance of the given profile name.
 - `dupmn uninstall <prof_name> all` : Uninstall all the duplicated instances of the given profile name (but not the main instance)
+- `dupmn rpcswap <prof_name> <number> <port>` : Changes the rpc port of the given instance number, this is only in case that by chance it causes a conflict with another application that uses the same port.
 
 # Usage example
 
