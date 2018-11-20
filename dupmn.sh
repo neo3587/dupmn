@@ -2,13 +2,12 @@
 
 # TODO:
 #  - Add a command to swap instance numbers
-#  - Add a command to manage a swapfile 
-#  - Check other installed dups on installing a new dup to see their rpc ports ? (if the daemon is stopped on install, the rpc port will be free causing a conflict on daemon restart)
 
 
 CYAN='\033[1;36m'
 RED='\033[0;31m'
 GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
 NC='\033[0m'
 
 function configure_systemd() {
@@ -209,7 +208,7 @@ function cmd_install() {
 	echo -e "===================================================================================================\
 			\n$coin_name duplicated masternode ${CYAN}number $count${NC} is up and syncing with the blockchain.\
 			\nThe duplicated masternode uses the same IP and port than the original one, but the private key is different and obviously it requires a different transaction (you cannot have 2 masternodes with the same transaction).\
-			\nNew RPC port is ${CYAN}$new_rpc${NC} (other programs may not be able to use this port, but you can change it with ${RED}dupmn rpcswap $1 $count PORT_NUMBER${NC})\
+			\nNew RPC port is ${CYAN}$new_rpc${NC} (other programs may not be able to use this port, but you can change it with ${RED}dupmn rpcchange $1 $count PORT_NUMBER${NC})\
 			\nStart: ${RED}systemctl start $1-$count.service${NC}\
 			\nStop:  ${RED}systemctl stop $1-$count.service${NC}\
 			\nDUPLICATED MASTERNODE PRIVATEKEY is: ${GREEN}$new_key${NC}\
@@ -285,15 +284,16 @@ function cmd_uninstall() {
 			sleep 3
 			rm -rf $coin_folder$2
 			
+			for (( i=$2; i<=$count; i++ )); do
+				systemctl stop $coin_name-$i.service 
+			done
 			for (( i=$2+1; i<=$count; i++ )); do
 				echo -e "setting ${CYAN}instance $i${NC} as ${CYAN}instance $(($i-1))${NC}..."
-				$coin_cli -datadir=$coin_folder$i stop > /dev/null
-				sleep 3
 				mv $coin_folder$i $coin_folder$(($i-1))
-				$coin_daemon -datadir=$coin_folder$(($i-1)) -daemon > /dev/null
+				sleep 1
+				systemctl start $coin_name-$(($i-1)).service 
 			done
 
-			systemctl stop $coin_name-$count.service > /dev/null
 			systemctl disable $coin_name-$count.service > /dev/null 2>&1
 			sleep 3
 			rm -rf /etc/systemd/system/$coin_name-$count.service
@@ -304,7 +304,7 @@ function cmd_uninstall() {
 	fi
 }
 
-function cmd_rpcswap() { 
+function cmd_rpcchange() { 
 	# $1 = profile_name | $2 = instance_number | $3 = port_number
 	
 	if [[ ! $(is_number $2) || ! $(is_number $3) ]]; then
@@ -319,8 +319,7 @@ function cmd_rpcswap() {
 	local -A prof=$(get_conf .dupmn/$1)
 
 	local count=$((${conf[$1]}))
-	local coin_cli="${prof[COIN_CLI]}"
-	local coin_daemon="${prof[COIN_DAEMON]}"
+	local coin_name="${prof[COIN_NAME]}"
 	local coin_folder="${prof[COIN_FOLDER]}"
 	local coin_config="${prof[COIN_CONFIG]}"
 
@@ -335,23 +334,79 @@ function cmd_rpcswap() {
 		exit
 	fi
 
-	$coin_cli -datadir=$coin_folder$(($2)) stop > /dev/null
+	systemctl stop $coin_name-$(($2)).service > /dev/null
 	sleep 3
 	sed -i "/^rpcport=/s/=.*/=$(($3))/" $coin_folder$(($2))/$coin_config
-	$coin_daemon -datadir=$coin_folder$(($2)) -daemon > /dev/null
+	systemctl start $coin_name-$(($2)).service
 
 	echo -e "${GREEN}$1${NC} instance ${CYAN}number $(($2))${NC} is now listening the rpc port ${RED}$(($3))${NC}"
 }
 
+function cmd_swapfile() {
+	# $1 = size_in_mbytes
+
+	if [[ ! $(is_number $1) ]]; then 
+		echo -e "Size_in_mbytes must be a number"
+		exit
+	fi
+
+	local avail_mb=$(df / --output=avail -m | grep [0-9])
+	local total_mb=$(df / --output=size -m | grep [0-9])
+
+	if [[ $(($1)) -ge $(($avail_mb)) ]]; then 
+		echo -e "There's only $(($avail_mb)) MB available in the hard disk (NOTE: recommended to use a swapfile of NUMBER_OF_MASTERNODES * 150 MB)"
+		exit
+	fi
+
+	echo -e "All duplicated instances will be temporary disabled until the swapfile command is finished to decrease the pressure on RAM..."
+
+	local -A conf=$(get_conf .dupmn/dupmn.conf)
+	for x in "${!conf[@]}"; do
+		local -A prof=$(get_conf .dupmn/$x)
+		for (( i=1; i<=${conf[$x]}; i++ )); do
+			systemctl stop ${prof[COIN_NAME]}-$i.service 
+			sleep 1
+		done
+	done
+
+	if [[ -f /mnt/dupmn_swapfile ]]; then
+		swapoff /mnt/dupmn_swapfile > /dev/null
+	fi
+
+	if [[ $(($1)) = 0 ]]; then 
+		rm -rf /mnt/dupmn_swapfile 
+		echo -e "Swapfile deleted"
+	else
+		dd if=/dev/zero of=/mnt/dupmn_swapfile bs=1024 count=$(($1 * 1024)) > /dev/null 2>&1
+		chmod 600 /mnt/dupmn_swapfile > /dev/null 2>&1
+		mkswap /mnt/dupmn_swapfile > /dev/null 2>&1
+		swapon /mnt/dupmn_swapfile > /dev/null 2>&1
+		/mnt/dupmn_swapfile swap swap defaults 0 0 > /dev/null 2>&1
+		echo -e "Swapfile new size = ${GREEN}$(($1)) MB${NC}"
+	fi
+
+	echo -e "Reenabling instances... (you don't need to activate them again from your wallet and your position in the mn pool reward won't be lost)"
+	for x in "${!conf[@]}"; do
+		local -A prof=$(get_conf .dupmn/$x)
+		for (( i=1; i<=${conf[$x]}; i++ )); do
+			systemctl start ${prof[COIN_NAME]}-$i.service
+			sleep 2
+		done
+	done
+
+	echo -e "Use ${YELLOW}free -m${NC} to see the changes of your swapfile"
+}
+
 function cmd_help() {
 	echo -e "Options:\n" \
-			"  - dupmn profadd <prof_file> <prof_name>     Adds a profile with the given name that will be used to create duplicates of the masternode\n" \
-			"  - dupmn profdel <prof_name>                 Deletes the given profile name, this will uninstall too any duplicated instance that uses this profile\n" \
-			"  - dupmn install <prof_name>                 Install a new instance based on the parameters of the given profile name\n" \
-			"  - dupmn list                                Shows the amount of duplicated instances of every masternode\n" \
-			"  - dupmn uninstall <prof_name> <number>      Uninstall the specified instance of the given profile name\n" \
-			"  - dupmn uninstall <prof_name> all           Uninstall all the duplicated instances of the given profile name (but not the main instance)\n" \
-			"  - dupmn rpcswap <prof_name> <number> <port> Swaps the RPC port used of the given number instance with the new one if it's not in use or reserved"
+			"  - ${YELLOW}dupmn profadd <prof_file> <prof_name>       ${NC}Adds a profile with the given name that will be used to create duplicates of the masternode\n" \
+			"  - ${YELLOW}dupmn profdel <prof_name>                   ${NC}Deletes the given profile name, this will uninstall too any duplicated instance that uses this profile\n" \
+			"  - ${YELLOW}dupmn install <prof_name>                   ${NC}Install a new instance based on the parameters of the given profile name\n" \
+			"  - ${YELLOW}dupmn list                                  ${NC}Shows the amount of duplicated instances of every masternode\n" \
+			"  - ${YELLOW}dupmn uninstall <prof_name> <number>        ${NC}Uninstall the specified instance of the given profile name\n" \
+			"  - ${YELLOW}dupmn uninstall <prof_name> all             ${NC}Uninstall all the duplicated instances of the given profile name (but not the main instance)\n" \
+			"  - ${YELLOW}dupmn rpcchange <prof_name> <number> <port> ${NC}Changes the RPC port used from the given number instance with the new one if it's not in use or reserved\n" \
+			"  - ${YELLOW}dupmn swapfile <size_in_mbytes>             ${NC}Creates, changes or deletes (if parameter is 0) a swapfile of the given size in MB to increase the virtual memory" 
 }
 
 function main() {
@@ -404,13 +459,20 @@ function main() {
 			prof_exists "$2"
 			cmd_uninstall "$2" "$3"
 			;;
-		"rpcswap")
+		"rpcchange")
 			if [ -z "$4" ]; then 
-				echo -e "dupmn rpcswap <prof_name> <number> <port> requires a profile name, instance number and a port number as parameters"
+				echo -e "dupmn rpcchange <prof_name> <number> <port> requires a profile name, instance number and a port number as parameters"
 				exit
 			fi
 			prof_exists "$2"
-			cmd_rpcswap "$2" "$3" "$4"
+			cmd_rpcchange "$2" "$3" "$4"
+			;;
+		"swapfile")
+			if [ -z "$2" ]; then 
+				echo -e "dupmn swapfile <size_in_mbytes> requires a number as parameter"
+				exit
+			fi
+			cmd_swapfile "$2"
 			;;
 		"help") 
 			cmd_help
