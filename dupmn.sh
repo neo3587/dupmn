@@ -394,7 +394,7 @@ function cmd_swapfile() {
 		done
 	done
 
-	echo -e "Use ${YELLOW}free -m${NC} to see the changes of your swapfile"
+	echo -e "Use ${YELLOW}swapon -s${NC} to see the changes of your swapfile and ${YELLOW}free -m${NC} to see the total available memory"
 }
 
 function cmd_help() {
