@@ -18,8 +18,8 @@ Then you can remove the installer script if you want: `rm -rf dupmn_install.sh`
 - `dupmn install <profile_name>` : Install a new instance based on the parameters of the given profile name.
 - `dupmn list` : Shows the amount of duplicated instances of every masternode.
 - `dupmn uninstall <profile_name> <number>` : Uninstall the specified instance of the given profile name.
-- `dupmn uninstall <prof_name> all` : Uninstall all the duplicated instances of the given profile name (but not the main instance)
-- `dupmn rpcchange <prof_name> <number> <port>` : Changes the rpc port of the given instance number, this is only in case that by chance it causes a conflict with another application that uses the same port.
+- `dupmn uninstall <profile_name> all` : Uninstall all the duplicated instances of the given profile name (but not the main instance).
+- `dupmn rpcchange <profile_name> <number> <port>` : Changes the rpc port of the given instance number, this is only in case that by chance it causes a conflict with another application that uses the same port.
 - `dupmn swapfile <size_in_mbytes>` : Creates/changes or deletes (if value is 0) a swapfile to increase the virtual memory, allowing to fit more masternodes in the same VPS, recommended size is 150 MB for each masternode (example: 3 masternodes => `dupmn swapfile 450`).
 
 # Usage example
