@@ -64,6 +64,10 @@ MN01_2 123.45.67.89:48451 MASTERNODE_PRIVATE_KEY_OF_DUPMN_2 TX_OF_DUPMN_2 TX_ID_
 MN01_3 123.45.67.89:48451 MASTERNODE_PRIVATE_KEY_OF_DUPMN_3 TX_OF_DUPMN_3 TX_ID_OF_DUPMN_3
 ```
 
+# Considerations
+
+A VPS doesn't have unlimited resources, creating too many instances may cause Out-Of-Memory error since MNs are a bit "RAM hungry" (can be fixed with `dupmn swapfile` command), there's also a limited hard-disk space and the blockchain increases in size everyday (so be sure to have a lot of free hard disk space, can be checked with `df -h`), and VPS providers usually puts a limit on monthly network bandwith (so running too many instances may get you to that limit).
+
 # Additional
 
 ```
