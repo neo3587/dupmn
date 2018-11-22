@@ -20,7 +20,7 @@ Then you can remove the installer script if you want: `rm -rf dupmn_install.sh`
 - `dupmn uninstall <profile_name> <number>` : Uninstall the specified instance of the given profile name.
 - `dupmn uninstall <profile_name> all` : Uninstall all the duplicated instances of the given profile name (but not the main instance).
 - `dupmn rpcchange <profile_name> <number> <port>` : Changes the rpc port of the given instance number, this is only in case that by chance it causes a conflict with another application that uses the same port.
-- `dupmn swapfile <size_in_mbytes>` : Creates/changes or deletes (if value is 0) a swapfile to increase the virtual memory, allowing to fit more masternodes in the same VPS, recommended size is 150 MB for each masternode (example: 3 masternodes => `dupmn swapfile 450`).
+- `dupmn swapfile <size_in_mbytes>` : Creates/changes or deletes (if value is 0) a swapfile to increase the virtual memory, allowing to fit more masternodes in the same VPS, recommended size is 150 MB for each masternode (example: 3 masternodes => `dupmn swapfile 450`), note that some masternodes might be more 'RAM hungry'.
 
 # Usage example
 
@@ -66,7 +66,7 @@ MN01_3 123.45.67.89:48451 MASTERNODE_PRIVATE_KEY_OF_DUPMN_3 TX_OF_DUPMN_3 TX_ID_
 
 # Considerations
 
-A VPS doesn't have unlimited resources, creating too many instances may cause Out-Of-Memory error since MNs are a bit "RAM hungry" (can be fixed with `dupmn swapfile` command), there's also a limited hard-disk space and the blockchain increases in size everyday (so be sure to have a lot of free hard disk space, can be checked with `df -h`), and VPS providers usually puts a limit on monthly network bandwith (so running too many instances may get you to that limit).
+A VPS doesn't have unlimited resources, creating too many instances may cause Out-Of-Memory error since MNs are a bit "RAM hungry" (can be partially fixed with `dupmn swapfile` command), there's also a limited hard-disk space and the blockchain increases in size everyday (so be sure to have a lot of free hard disk space, can be checked with `df -h`), and VPS providers usually puts a limit on monthly network bandwith (so running too many instances may get you to that limit).
 
 # Additional
 
