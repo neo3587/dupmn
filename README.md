@@ -1,6 +1,6 @@
 # Duplicate MasterNode (dupmn)
 
-A script to easily create and manage multiple masternodes of the same coin in the same VPS, initially made for BCARD, needs to be tested with more cryptocurrencies.
+A script to easily create and manage multiple masternodes of the same coin in the same VPS, initially made for BCARD, can be adapted for almost any other coin.
 
 # How to install
 
@@ -63,6 +63,25 @@ MN01_1 123.45.67.89:48451 MASTERNODE_PRIVATE_KEY_OF_DUPMN_1 TX_OF_DUPMN_1 TX_ID_
 MN01_2 123.45.67.89:48451 MASTERNODE_PRIVATE_KEY_OF_DUPMN_2 TX_OF_DUPMN_2 TX_ID_OF_DUPMN_2
 MN01_3 123.45.67.89:48451 MASTERNODE_PRIVATE_KEY_OF_DUPMN_3 TX_OF_DUPMN_3 TX_ID_OF_DUPMN_3
 ```
+
+# Profile configuration
+
+Using the CARDbuyers.dmn profile as example, you can create your own profile to fit with any other coin:
+```
+COIN_NAME="CARDbuyers"           # Name of the coin
+COIN_PATH="/usr/local/bin/"      # Location of the daemon and cli
+COIN_DAEMON="CARDbuyersd"        # Name of the daemon
+COIN_CLI="CARDbuyers-cli"        # Name of the cli
+COIN_FOLDER="/root/.CARDbuyers"  # Folder where the conf file and blockchain is stored
+COIN_CONFIG="CARDbuyers.conf"    # Name of the conf file
+```
+As with the <b>Usage example</b>, you just need to type these commands to create a new duplicated masternode:
+```
+dupmn profadd othercoin.dmn othercoin
+dupmn install othercoin
+```
+
+Note: The .dmn extension is completely optional, it is done in this way to differentiate the profile file from others.
 
 # Considerations
 
