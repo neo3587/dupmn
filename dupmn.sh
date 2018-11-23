@@ -1,17 +1,24 @@
 #!/bin/bash
 
 # TODO:
-#  - Add a command to swap instance numbers
+#  - Add a way to automatize rpcchange
+#  - profadd must check if COIN_PATH has a leading '/' and COIN_FOLDER hasn't, maybe check too if the folders, daemon, cli, etc exists
+#  - check if $coin_cli is running on install to create the new privkey
+#  - check dups rpcports on install, just in case they're disabled
 
 
-CYAN='\033[1;36m'
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-NC='\033[0m'
+RED='\e[1;31m'
+GREEN='\e[1;32m'
+YELLOW='\e[1;33m'
+BLUE='\e[1;34m'
+MAGENTA='\e[1;35m'
+CYAN='\e[1;36m'
+UNDERLINE='\e[1;4m'
+NC='\e[0m'
+
 
 function configure_systemd() {
-	# $1 = prof_file | $2 = instance_number
+	# <$1 = prof_file> | <$2 = instance_number>
 	
 	local -A prof=$(get_conf .dupmn/$1)
 
@@ -61,7 +68,7 @@ function configure_systemd() {
 }
 
 function get_conf() { 
-	# $1 = conf_file
+	# <$1 = conf_file>
 	local str_map="( ";
 	for line in `sed '/^$/d' $1`; do
 		str_map+="[${line%=*}]=${line#*=} "
@@ -71,14 +78,14 @@ function get_conf() {
 }
 
 function port_check() { 
-	# $1 = port_number
+	# <$1 = port_number>
 	if [ ! $(lsof -Pi :$1 -sTCP:LISTEN -t) ]; then
 		echo -e 1
 	fi
 }
 
 function find_port() {
-	# $1 = initial_check
+	# <$1 = initial_check>
 	for (( i=$1; i<=49151; i++ )); do
 		if [ $(port_check $i) ]; then
 			echo -e "$i"
@@ -94,14 +101,14 @@ function find_port() {
 }
 
 function is_number() {
-	# $1 = number
+	# <$1 = number>
 	if [[ $1 =~ ^[0-9]+$ ]]; then 
 		echo -e 1
 	fi
 }
 
 function cmd_profadd() { 
-	# $1 = profile_file | $2 = profile_name
+	# <$1 = profile_file> | <$2 = profile_name>
 
 	local -A prof=$(get_conf $1)
 	local CMD_ARRAY=(COIN_NAME COIN_PATH COIN_DAEMON COIN_CLI COIN_FOLDER COIN_CONFIG)
@@ -127,11 +134,11 @@ function cmd_profadd() {
 
 	cp "$1" ".dupmn/$2"
 
-	echo -e "$2 profile successfully added, use ${GREEN}dupmn install $2${NC} to create a new instance of the masternode"
+	echo -e "${BLUE}$2${NC} profile successfully added, use ${GREEN}dupmn install $2${NC} to create a new instance of the masternode"
 }
 
 function cmd_profdel() {
-	# $1 = profile_name
+	# <$1 = profile_name>
 
 	local -A conf=$(get_conf .dupmn/dupmn.conf)
 	local -A prof=$(get_conf .dupmn/$1)
@@ -153,7 +160,7 @@ function cmd_profdel() {
 }
 
 function cmd_install() {
-	# $1 = profile_name
+	# <$1 = profile_name>
 
 	local -A conf=$(get_conf .dupmn/dupmn.conf)
 	local -A prof=$(get_conf .dupmn/$1)
@@ -178,21 +185,21 @@ function cmd_install() {
 	fi
 
 	local new_key=$($coin_cli masternode genkey)
-	local new_rpc=$(find_port $(($(grep -Po '(?<=rpcport=).*' $coin_folder/$coin_config)+1)))
+	local new_rpc=$(find_port $(($(grep -Po '(?<=RPC_PORT=).*' .dupmn/$1 || grep -Po '(?<=rpcport=).*' $coin_folder/$coin_config || echo -e "1023")+1)))
 	local new_folder="$coin_folder$count"
 
 	mkdir $new_folder
 	cp $coin_folder/$coin_config $new_folder
 
-	sed -i "/^rpcport=/s/=.*/=$new_rpc/" $new_folder/$coin_config
-	sed -i "/^listen=/s/=.*/=0/" $new_folder/$coin_config
-	sed -i "/^masternodeprivkey=/s/=.*/=$new_key/" $new_folder/$coin_config
+	grep -Poq '(?<=rpcport=).*'           $new_folder/$coin_config && sed -i "/^rpcport=/s/=.*/=$new_rpc/"           $new_folder/$coin_config || echo -e "rpcport=$new_rpc"           >> $new_folder/$coin_config
+	grep -Poq '(?<=listen=).*'            $new_folder/$coin_config && sed -i "/^listen=/s/=.*/=0/"                   $new_folder/$coin_config || echo -e "listen=0"                   >> $new_folder/$coin_config
+	grep -Poq '(?<=masternodeprivkey=).*' $new_folder/$coin_config && sed -i "/^masternodeprivkey=/s/=.*/=$new_key/" $new_folder/$coin_config || echo -e "masternodeprivkey=$new_key" >> $new_folder/$coin_config
 
-	echo -e "#!/bin/bash\n$coin_cli \$@" > /usr/bin/$coin_cli-0
+	echo -e "#!/bin/bash\n$coin_cli \$@"    > /usr/bin/$coin_cli-0
 	echo -e "#!/bin/bash\n$coin_daemon \$@" > /usr/bin/$coin_daemon-0
-	echo -e "#!/bin/bash\n$coin_cli -datadir=$new_folder \$@" > /usr/bin/$coin_cli-$count
+	echo -e "#!/bin/bash\n$coin_cli -datadir=$new_folder \$@"    > /usr/bin/$coin_cli-$count
 	echo -e "#!/bin/bash\n$coin_daemon -datadir=$new_folder \$@" > /usr/bin/$coin_daemon-$count
-	echo -e "#!/bin/bash\nfor (( i=0; i<=$count; i++ )) do\n echo -e MN\$i:\n $coin_cli-\$i \$@\ndone" > /usr/bin/$coin_cli-all
+	echo -e "#!/bin/bash\nfor (( i=0; i<=$count; i++ )) do\n echo -e MN\$i:\n $coin_cli-\$i \$@\ndone"    > /usr/bin/$coin_cli-all
 	echo -e "#!/bin/bash\nfor (( i=0; i<=$count; i++ )) do\n echo -e MN\$i:\n $coin_daemon-\$i \$@\ndone" > /usr/bin/$coin_daemon-all
 	chmod +x /usr/bin/$coin_cli-0
 	chmod +x /usr/bin/$coin_daemon-0
@@ -206,16 +213,16 @@ function cmd_install() {
 	configure_systemd $1 $count
 
 	echo -e "===================================================================================================\
-			\n$coin_name duplicated masternode ${CYAN}number $count${NC} is up and syncing with the blockchain.\
+			\n${BLUE}$coin_name${NC} duplicated masternode ${CYAN}number $count${NC} is up and syncing with the blockchain.\
 			\nThe duplicated masternode uses the same IP and port than the original one, but the private key is different and obviously it requires a different transaction (you cannot have 2 masternodes with the same transaction).\
-			\nNew RPC port is ${CYAN}$new_rpc${NC} (other programs may not be able to use this port, but you can change it with ${RED}dupmn rpcchange $1 $count PORT_NUMBER${NC})\
+			\nNew RPC port is ${MAGENTA}$new_rpc${NC} (other programs may not be able to use this port, but you can change it with ${MAGENTA}dupmn rpcchange $1 $count PORT_NUMBER${NC})\
 			\nStart: ${RED}systemctl start $1-$count.service${NC}\
 			\nStop:  ${RED}systemctl stop $1-$count.service${NC}\
 			\nDUPLICATED MASTERNODE PRIVATEKEY is: ${GREEN}$new_key${NC}\
 			\nWait until the duplicated masternode is synced with the blockchain before trying to start it.\
 			\nFor check masternode status just use: ${GREEN}$coin_cli-$count masternode status${NC} (if says \"Hot Node\" => synced).\
-			\nNote: ${GREEN}$coin_cli-0${NC} and ${GREEN}$coin_daemon-0${NC} are just a reference to the 'main masternode', not a duplicated one.\
-			\nNote 2: You can use ${GREEN}$coin_cli-all [parameters]${NC} and ${GREEN}$coin_daemon-all [parameters]${NC} to apply the parameters on all masternodes. Example: ${GREEN}$coin_cli-all masternode status${NC}\
+			\nNOTE: ${GREEN}$coin_cli-0${NC} and ${GREEN}$coin_daemon-0${NC} are just a reference to the 'main masternode', not a duplicated one.\
+			\nNOTE 2: You can use ${GREEN}$coin_cli-all [parameters]${NC} and ${GREEN}$coin_daemon-all [parameters]${NC} to apply the parameters on all masternodes. Example: ${GREEN}$coin_cli-all masternode status${NC}\
 			\n==================================================================================================="
 }
 
@@ -231,7 +238,7 @@ function cmd_list() {
 }
 
 function cmd_uninstall() {
-	# $1 = profile_name | $2 = instance_number/all
+	# <$1 = profile_name> | <$2 = instance_number/all>
 
 	local -A conf=$(get_conf .dupmn/dupmn.conf)
 	local -A prof=$(get_conf .dupmn/$1)
@@ -251,7 +258,7 @@ function cmd_uninstall() {
 
 	if [ "$2" = "all" ]; then 
 		for (( i=$count; i>=1; i-- )); do
-			echo -e "Uninstalling ${GREEN}$1${NC} instance ${CYAN}number $i${NC}"
+			echo -e "Uninstalling ${BLUE}$1${NC} instance ${CYAN}number $i${NC}"
 			rm -rf /usr/bin/$coin_cli-$i
 			rm -rf /usr/bin/$coin_daemon-$i
 			systemctl stop $coin_name-$i.service > /dev/null
@@ -272,7 +279,7 @@ function cmd_uninstall() {
 		elif [ $(($2)) -gt $(($count)) ]; then
 			echo -e "Instance $(($2)) doesn't exists, there are only $count $1 instances"
 		else 
-			echo -e "Uninstalling ${GREEN}$1${NC} instance ${CYAN}number $(($2))${NC}"
+			echo -e "Uninstalling ${BLUE}$1${NC} instance ${CYAN}number $(($2))${NC}"
 			rm -rf /usr/bin/$coin_cli-$(($count))
 			rm -rf /usr/bin/$coin_daemon-$(($count))
 			$coin_cli -datadir=$coin_folder$(($2)) stop > /dev/null
@@ -300,18 +307,18 @@ function cmd_uninstall() {
 			systemctl daemon-reload
 		fi
 	else 
-		echo -e "Insert a number or all as parameter, not whatever \"$2\" means"
+		echo -e "Insert a number or all as parameter, not whatever ${RED}\"$2\"${NC} means"
 	fi
 }
 
 function cmd_rpcchange() { 
-	# $1 = profile_name | $2 = instance_number | $3 = port_number
+	# <$1 = profile_name> | <$2 = instance_number> | [$3 = port_number]
 	
 	if [[ ! $(is_number $2) || ! $(is_number $3) ]]; then
-		echo -e "Instance and port must be numbers"
+		echo -e "${YELLOW}<number>${NC} and ${YELLOW}port${NC} must be numbers"
 		exit
 	elif [[ $(($3)) -lt 1024 || $(($3)) -gt 49151 ]]; then 
-		echo -e "$3 is not a valid port (must be between 1024 and 49151)"
+		echo -e "${MAGENTA}$3${NC} is not a valid or a reserved port (must be between ${MAGENTA}1024${NC} and ${MAGENTA}49151${NC})"
 		exit
 	fi
 
@@ -324,13 +331,13 @@ function cmd_rpcchange() {
 	local coin_config="${prof[COIN_CONFIG]}"
 
 	if [[ $(($2)) -gt $count ]]; then 
-		echo -e "Instance ${CYAN}number $(($2))${NC} doesn't exists, there are only $count $1 instances"
+		echo -e "Instance ${CYAN}number $(($2))${NC} doesn't exists, there are only ${CYAN}$count${NC} ${BLUE}$1${NC} instances"
 		exit
 	elif [[ $(($2)) = 0 ]]; then 
 		echo -e "Instance ${CYAN}number 0${NC} is the main masternode, not a duplicated one, can't change this one"
 		exit
 	elif [[ ! $(port_check $(($3))) ]]; then
-		echo -e "Port ${RED}$(($3))${NC} seems to be in use by another process"
+		echo -e "Port ${MAGENTA}$(($3))${NC} seems to be in use by another process"
 		exit
 	fi
 
@@ -339,14 +346,14 @@ function cmd_rpcchange() {
 	sed -i "/^rpcport=/s/=.*/=$(($3))/" $coin_folder$(($2))/$coin_config
 	systemctl start $coin_name-$(($2)).service
 
-	echo -e "${GREEN}$1${NC} instance ${CYAN}number $(($2))${NC} is now listening the rpc port ${RED}$(($3))${NC}"
+	echo -e "${BLUE}$1${NC} instance ${CYAN}number $(($2))${NC} is now listening the rpc port ${MAGENTA}$(($3))${NC}"
 }
 
 function cmd_swapfile() {
-	# $1 = size_in_mbytes
+	# <$1 = size_in_mbytes>
 
 	if [[ ! $(is_number $1) ]]; then 
-		echo -e "Size_in_mbytes must be a number"
+		echo -e "${YELLOW}<size_in_mbytes>${NC} must be a number"
 		exit
 	fi
 
@@ -412,9 +419,9 @@ function cmd_help() {
 function main() {
 
 	function prof_exists() {
-		# $1 = profile_name
+		# <$1 = profile_name>
 		if [ ! -f ".dupmn/$1" ]; then
-			echo -e "$1 profile hasn't been added"
+			echo -e "${BLUE}$1${NC} profile hasn't been added"
 			exit
 		fi
 	}
@@ -427,14 +434,14 @@ function main() {
 	case "$1" in
 		"profadd") 
 			if [ -z "$3" ]; then
-				echo -e "dupmn profadd <prof_file> <coin_name> requires a profile file and a new profile name as parameters"
+				echo -e "${YELLOW}dupmn profadd <prof_file> <coin_name>${NC} requires a profile file and a new profile name as parameters"
 				exit
 			fi
 			cmd_profadd "$2" "$3"
 			;;
 		"profdel")
 			if [ -z "$2" ]; then 
-				echo -e "dupmn profadd <prof_name> requires a profile name as parameter"
+				echo -e "${YELLOW}dupmn profadd <prof_name>${NC} requires a profile name as parameter"
 				exit
 			fi
 			prof_exists "$2"
@@ -442,7 +449,7 @@ function main() {
 			;;
 		"install") 
 			if [ -z "$2" ]; then
-				echo -e "dupmn install <coin_name> requires a profile name of an added profile as a parameter"
+				echo -e "${YELLOW}dupmn install <coin_name>${NC} requires a profile name of an added profile as a parameter"
 				exit
 			fi
 			prof_exists "$2"
@@ -461,7 +468,8 @@ function main() {
 			;;
 		"rpcchange")
 			if [ -z "$4" ]; then 
-				echo -e "dupmn rpcchange <prof_name> <number> <port> requires a profile name, instance number and a port number as parameters"
+			#if [ -z "$3" ]; then 
+				echo -e "${YELLOW}dupmn rpcchange <prof_name> <number> <port>${NC} requires a profile name, instance number and a port number as parameters"
 				exit
 			fi
 			prof_exists "$2"
@@ -469,7 +477,7 @@ function main() {
 			;;
 		"swapfile")
 			if [ -z "$2" ]; then 
-				echo -e "dupmn swapfile <size_in_mbytes> requires a number as parameter"
+				echo -e "${YELLOW}dupmn swapfile <size_in_mbytes>${NC} requires a number as parameter"
 				exit
 			fi
 			cmd_swapfile "$2"
@@ -478,8 +486,7 @@ function main() {
 			cmd_help
 			;;
 		*)  
-			echo -e "Unrecognized parameter: $1\n"
-			cmd_help
+			echo -e "Unrecognized parameter: ${RED}$1${NC}\n"
 			;;
 	esac
 }
