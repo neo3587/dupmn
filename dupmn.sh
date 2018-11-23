@@ -1,7 +1,6 @@
 #!/bin/bash
 
 # TODO:
-#  - Add a way to automatize rpcchange
 #  - profadd must check if COIN_PATH has a leading '/' and COIN_FOLDER hasn't, maybe check too if the folders, daemon, cli, etc exists
 #  - check if $coin_cli is running on install to create the new privkey
 #  - check dups rpcports on install, just in case they're disabled
@@ -314,14 +313,6 @@ function cmd_uninstall() {
 function cmd_rpcchange() { 
 	# <$1 = profile_name> | <$2 = instance_number> | [$3 = port_number]
 	
-	if [[ ! $(is_number $2) || ! $(is_number $3) ]]; then
-		echo -e "${YELLOW}<number>${NC} and ${YELLOW}port${NC} must be numbers"
-		exit
-	elif [[ $(($3)) -lt 1024 || $(($3)) -gt 49151 ]]; then 
-		echo -e "${MAGENTA}$3${NC} is not a valid or a reserved port (must be between ${MAGENTA}1024${NC} and ${MAGENTA}49151${NC})"
-		exit
-	fi
-
 	local -A conf=$(get_conf .dupmn/dupmn.conf)
 	local -A prof=$(get_conf .dupmn/$1)
 
@@ -330,23 +321,42 @@ function cmd_rpcchange() {
 	local coin_folder="${prof[COIN_FOLDER]}"
 	local coin_config="${prof[COIN_CONFIG]}"
 
-	if [[ $(($2)) -gt $count ]]; then 
+	if [[ ! $(is_number $2) ]]; then
+		echo -e "${YELLOW}dupmn rpcchange <prof_name> <number> [port]${NC}, <number> must be a number"
+		exit
+	elif [[ $(($2)) -gt $count ]]; then 
 		echo -e "Instance ${CYAN}number $(($2))${NC} doesn't exists, there are only ${CYAN}$count${NC} ${BLUE}$1${NC} instances"
 		exit
 	elif [[ $(($2)) = 0 ]]; then 
 		echo -e "Instance ${CYAN}number 0${NC} is the main masternode, not a duplicated one, can't change this one"
 		exit
-	elif [[ ! $(port_check $(($3))) ]]; then
-		echo -e "Port ${MAGENTA}$(($3))${NC} seems to be in use by another process"
+	fi
+
+	local new_port="$(grep -Po "rpcport=\K.*" $coin_folder$(($2))/$coin_config)";
+
+	if [[ -z "$3" ]]; then
+		echo -e "No port provided, the port will be changed for any other free port..."
+		new_port=$(find_port $new_port)
+	elif [[ ! $(is_number $3) ]]; then
+		echo -e "${YELLOW}dupmn rpcchange <prof_name> <number> [port]${NC}, [port] must be a number"
 		exit
+	elif [[ $(($3)) -lt 1024 || $(($3)) -gt 49151 ]]; then 
+		echo -e "${MAGENTA}$3${NC} is not a valid or a reserved port (must be between ${MAGENTA}1024${NC} and ${MAGENTA}49151${NC})"
+		exit
+	else 
+		new_port=$(($3))
+		if [[ ! $(port_check $(($new_port))) ]]; then
+			echo -e "Port ${MAGENTA}$(($new_port))${NC} seems to be in use by another process"
+			exit
+		fi
 	fi
 
 	systemctl stop $coin_name-$(($2)).service > /dev/null
 	sleep 3
-	sed -i "/^rpcport=/s/=.*/=$(($3))/" $coin_folder$(($2))/$coin_config
+	sed -i "/^rpcport=/s/=.*/=$(($new_port))/" $coin_folder$(($2))/$coin_config
 	systemctl start $coin_name-$(($2)).service
 
-	echo -e "${BLUE}$1${NC} instance ${CYAN}number $(($2))${NC} is now listening the rpc port ${MAGENTA}$(($3))${NC}"
+	echo -e "${BLUE}$1${NC} instance ${CYAN}number $(($2))${NC} is now listening the rpc port ${MAGENTA}$(($new_port))${NC}"
 }
 
 function cmd_swapfile() {
@@ -412,7 +422,7 @@ function cmd_help() {
 			"  - ${YELLOW}dupmn list                                  ${NC}Shows the amount of duplicated instances of every masternode\n" \
 			"  - ${YELLOW}dupmn uninstall <prof_name> <number>        ${NC}Uninstall the specified instance of the given profile name\n" \
 			"  - ${YELLOW}dupmn uninstall <prof_name> all             ${NC}Uninstall all the duplicated instances of the given profile name (but not the main instance)\n" \
-			"  - ${YELLOW}dupmn rpcchange <prof_name> <number> <port> ${NC}Changes the RPC port used from the given number instance with the new one if it's not in use or reserved\n" \
+			"  - ${YELLOW}dupmn rpcchange <prof_name> <number> [port] ${NC}Changes the RPC port used from the given number instance with the new one (or finds a new one by itself if no port is given)\n" \
 			"  - ${YELLOW}dupmn swapfile <size_in_mbytes>             ${NC}Creates, changes or deletes (if parameter is 0) a swapfile of the given size in MB to increase the virtual memory" 
 }
 
@@ -460,16 +470,15 @@ function main() {
 			;;
 		"uninstall") 
 			if [ -z "$3" ]; then 
-				echo -e "dupmn uninstall <coin_name> <param> requires a profile name and a number (or all) as parameters"
+				echo -e "${YELLOW}dupmn uninstall <coin_name> <param>${NC} requires a profile name and a number (or all) as parameters"
 				exit
 			fi
 			prof_exists "$2"
 			cmd_uninstall "$2" "$3"
 			;;
 		"rpcchange")
-			if [ -z "$4" ]; then 
-			#if [ -z "$3" ]; then 
-				echo -e "${YELLOW}dupmn rpcchange <prof_name> <number> <port>${NC} requires a profile name, instance number and a port number as parameters"
+			if [ -z "$3" ]; then 
+				echo -e "${YELLOW}dupmn rpcchange <prof_name> <number> [port]${NC} requires a profile name, instance number and optionally a port number as parameters"
 				exit
 			fi
 			prof_exists "$2"
