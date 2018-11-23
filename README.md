@@ -26,7 +26,7 @@ Then you can remove the installer script if you want: `rm -rf dupmn_install.sh`
 
 Usage example based on the CARDbuyers profile.
 ```
-wget -q https://raw.githubusercontent.com/neo3587/dupmn/master/CARDbuyers.dmn
+wget -q https://raw.githubusercontent.com/neo3587/dupmn/master/profiles/CARDbuyers.dmn
 dupmn profadd CARDbuyers.dmn CARDbuyers
 ```
 Now the CARDbuyers profile is saved and can be removed if you want: `rm -rf CARDbuyers.dmn`
