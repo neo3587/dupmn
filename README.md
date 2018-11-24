@@ -74,6 +74,7 @@ COIN_DAEMON="CARDbuyersd"        # Name of the daemon
 COIN_CLI="CARDbuyers-cli"        # Name of the cli
 COIN_FOLDER="/root/.CARDbuyers"  # Folder where the conf file and blockchain is stored
 COIN_CONFIG="CARDbuyers.conf"    # Name of the conf file
+RPC_PORT=48451                   # NOT required parameter, you can optionally add this for coins that doesn't have the rpcport parameter in their .conf file (otherwise dupmn will try to use any free port starting from 1024).
 ```
 As with the <b>Usage example</b>, you just need to type these commands to create a new duplicated masternode:
 ```
