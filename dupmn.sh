@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # TODO:
-#  - profadd must check if COIN_PATH has a leading '/' and COIN_FOLDER hasn't, maybe check too if the folders, daemon, cli, etc exists
+#  - install should check if the folders, daemon, cli, ... exists
 #  - check if $coin_cli is running on install to create the new privkey
 #  - check dups rpcports on install, just in case they're disabled
 
@@ -35,13 +35,9 @@ function configure_systemd() {
 	\n[Service]\
 	\nUser=root\
 	\nGroup=root\
-	\n\
 	\nType=forking\
-	\n#PIDFile=$coin_folder$2/$coin_name.pid\
-	\n\
 	\nExecStart=$coin_path$coin_daemon -daemon -conf=$coin_folder$2/$coin_config -datadir=$coin_folder$2\
 	\nExecStop=-$coin_path$coin_cli -conf=$coin_folder$2/$coin_config -datadir=$coin_folder$2 stop\
-	\n\
 	\nRestart=always\
 	\nPrivateTmp=true\
 	\nTimeoutStopSec=60s\
@@ -59,10 +55,7 @@ function configure_systemd() {
 	systemctl enable $coin_name-$2.service > /dev/null 2>&1
 
 	if [[ -z "$(ps axo cmd:100 | egrep $coin_daemon-$2)" ]]; then
-		echo -e "${RED}$coin_name-$2 is not running${NC}, please investigate. You should start by running the following commands as root:"
-		echo -e "${GREEN}systemctl start $coin_name-$2.service"
-		echo -e "systemctl status $coin_name-$2.service"
-		echo -e "less /var/log/syslog${NC}"
+		echo -e "1"
 	fi
 }
 
@@ -132,6 +125,17 @@ function cmd_profadd() {
 	fi
 
 	cp "$1" ".dupmn/$2"
+
+	local coin_path=${prof[COIN_PATH]}
+	local coin_folder=${prof[COIN_FOLDER]}
+
+	if [[ ${coin_path:${#coin_path}-1:1} != "/" ]]; then
+		sed -i "/^COIN_PATH=/s/=.*/=\"${coin_path//"/"/"\/"}\/\"/" .dupmn/$2
+	fi
+	if [[ ${coin_folder:${#coin_folder}-1:1} = "/" ]]; then
+		coin_folder=${coin_folder::-1}
+		sed -i "/^COIN_FOLDER=/s/=.*/=\"${coin_folder//"/"/"\/"}\"/" .dupmn/$2
+	fi
 
 	echo -e "${BLUE}$2${NC} profile successfully added, use ${GREEN}dupmn install $2${NC} to create a new instance of the masternode"
 }
@@ -209,20 +213,33 @@ function cmd_install() {
 
 	sed -i "/^$1=/s/=.*/=$count/" .dupmn/dupmn.conf
 
-	configure_systemd $1 $count
+	local sysmd_res=$(configure_systemd $1 $count)
 
 	echo -e "===================================================================================================\
 			\n${BLUE}$coin_name${NC} duplicated masternode ${CYAN}number $count${NC} is up and syncing with the blockchain.\
 			\nThe duplicated masternode uses the same IP and port than the original one, but the private key is different and obviously it requires a different transaction (you cannot have 2 masternodes with the same transaction).\
 			\nNew RPC port is ${MAGENTA}$new_rpc${NC} (other programs may not be able to use this port, but you can change it with ${MAGENTA}dupmn rpcchange $1 $count PORT_NUMBER${NC})\
-			\nStart: ${RED}systemctl start $1-$count.service${NC}\
-			\nStop:  ${RED}systemctl stop $1-$count.service${NC}\
+			\nStart:              ${RED}systemctl start   $1-$count.service${NC}\
+			\nStop:               ${RED}systemctl stop    $1-$count.service${NC}\
+			\nStart on reboot:    ${RED}systemctl enable  $1-$count.service${NC}\
+			\nNo start on reboot: ${RED}systemctl disable $1-$count.service${NC}\
+			\n(Currently configured to start on reboot)\
 			\nDUPLICATED MASTERNODE PRIVATEKEY is: ${GREEN}$new_key${NC}\
 			\nWait until the duplicated masternode is synced with the blockchain before trying to start it.\
 			\nFor check masternode status just use: ${GREEN}$coin_cli-$count masternode status${NC} (if says \"Hot Node\" => synced).\
 			\nNOTE: ${GREEN}$coin_cli-0${NC} and ${GREEN}$coin_daemon-0${NC} are just a reference to the 'main masternode', not a duplicated one.\
 			\nNOTE 2: You can use ${GREEN}$coin_cli-all [parameters]${NC} and ${GREEN}$coin_daemon-all [parameters]${NC} to apply the parameters on all masternodes. Example: ${GREEN}$coin_cli-all masternode status${NC}\
 			\n==================================================================================================="
+
+	if [[ $sysmd_res ]]; then 
+		echo -e "\n${RED}IMPORTANT!!!${NC} \
+				\nSeems like there might be a problem with the systemctl configuration, please investigate.\
+				\nYou should start by running the following commands:\
+				\n${GREEN}systemctl start $coin_name-$2.service\
+				\nsystemctl status $coin_name-$2.service\
+				\nless /var/log/syslog${NC}\
+				\nThe most common causes of this might be that either you made something to a file that dupmn modifies or creates, or that you don't have enough free resources (usually memory), there's also the chance that this could be a false positive error (so actually everything is ok), anyway please use the commands above to investigate"
+	fi
 }
 
 function cmd_list() {
