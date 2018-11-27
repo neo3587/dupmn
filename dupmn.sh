@@ -1,10 +1,5 @@
 #!/bin/bash
 
-# TODO:
-#  - install should check if the folders, daemon, cli, ... exists
-#  - check if $coin_cli is running on install to create the new privkey
-#  - check dups rpcports on install, just in case they're disabled
-
 
 RED='\e[1;31m'
 GREEN='\e[1;32m'
@@ -61,12 +56,11 @@ function configure_systemd() {
 
 function get_conf() { 
 	# <$1 = conf_file>
-	local str_map="( ";
+	local str_map="";
 	for line in `sed '/^$/d' $1`; do
 		str_map+="[${line%=*}]=${line#*=} "
 	done
-	str_map+=" )"
-	echo -e "$str_map"
+	echo -e "( $str_map )"
 }
 
 function port_check() { 
@@ -191,6 +185,11 @@ function cmd_install() {
 	local new_rpc=$(find_port $(($(grep -Po '(?<=RPC_PORT=).*' .dupmn/$1 || grep -Po '(?<=rpcport=).*' $coin_folder/$coin_config || echo -e "1023")+1)))
 	local new_folder="$coin_folder$count"
 
+	if [[ ! $new_key =~ ^[a-zA-Z0-9]+$ ]]; then
+		echo -e "Main masternode must be running to create a duplicate masternode, use ${GREEN}$coin_daemon -daemon${NC} to start the main masternode"
+		exit
+	fi
+
 	mkdir $new_folder
 	cp $coin_folder/$coin_config $new_folder
 
@@ -235,10 +234,11 @@ function cmd_install() {
 		echo -e "\n${RED}IMPORTANT!!!${NC} \
 				\nSeems like there might be a problem with the systemctl configuration, please investigate.\
 				\nYou should start by running the following commands:\
-				\n${GREEN}systemctl start $coin_name-$2.service\
-				\nsystemctl status $coin_name-$2.service\
-				\nless /var/log/syslog${NC}\
-				\nThe most common causes of this might be that either you made something to a file that dupmn modifies or creates, or that you don't have enough free resources (usually memory), there's also the chance that this could be a false positive error (so actually everything is ok), anyway please use the commands above to investigate"
+				\n${GREEN}systemctl start  $coin_name-$2.service${NC}\
+				\n${GREEN}systemctl status $coin_name-$2.service${NC}\
+				\n${GREEN}less /var/log/syslog${NC}\
+				\nThe most common causes of this might be that either you made something to a file that dupmn modifies or creates, or that you don't have enough free resources (usually memory).
+				\nThere's also the chance that this could be a false positive error (so actually everything is ok), anyway please use the commands above to investigate."
 	fi
 }
 
@@ -300,7 +300,7 @@ function cmd_uninstall() {
 			rm -rf /usr/bin/$coin_daemon-$(($count))
 			$coin_cli -datadir=$coin_folder$(($2)) stop > /dev/null
 			sed -i "/^$1=/s/=.*/=$(($count-1))/" ".dupmn/dupmn.conf"
-			echo -e "#!/bin/bash\nfor (( i=0; i<=$(($count-1)); i++ )) do\n echo -e MN\$i:\n $coin_cli-\$i \$@\ndone" > /usr/bin/$coin_cli-all
+			echo -e "#!/bin/bash\nfor (( i=0; i<=$(($count-1)); i++ )) do\n echo -e MN\$i:\n $coin_cli-\$i \$@\ndone"    > /usr/bin/$coin_cli-all
 			echo -e "#!/bin/bash\nfor (( i=0; i<=$(($count-1)); i++ )) do\n echo -e MN\$i:\n $coin_daemon-\$i \$@\ndone" > /usr/bin/$coin_daemon-all
 			chmod +x /usr/bin/$coin_cli-all
 			chmod +x /usr/bin/$coin_daemon-all
@@ -454,7 +454,7 @@ function main() {
 	}
 
 	if [ -z "$1" ]; then
-		cmd_help
+		echo -e "No command inserted, use ${YELLOW}dupmn help${NC} to see all the available commands"
 		exit
 	fi
 
@@ -512,7 +512,8 @@ function main() {
 			cmd_help
 			;;
 		*)  
-			echo -e "Unrecognized parameter: ${RED}$1${NC}\n"
+			echo -e "Unrecognized parameter: ${RED}$1${NC}"
+			echo -e "use ${YELLOW}dupmn help${NC} to see all the available commands"
 			;;
 	esac
 }
