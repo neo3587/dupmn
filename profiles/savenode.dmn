@@ -1,0 +1,6 @@
+COIN_NAME="savenode"
+COIN_PATH="/usr/local/bin/"
+COIN_DAEMON="savenoded"
+COIN_CLI="savenode-cli"
+COIN_FOLDER="/root/.savenode"
+COIN_CONFIG="savenode.conf"
