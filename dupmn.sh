@@ -1,5 +1,12 @@
 #!/bin/bash
 
+# TODO:
+# - remove COIN_PATH, change for which
+# - avoid that people can create a profile named dupmn.conf, for gods sake...
+# - dupmn ipadd <ip> # will require hard restart
+# - dupmn ipdel <ip> # not main one
+# - dupmn installip <profile_name> <ip>
+
 
 RED='\e[1;31m'
 GREEN='\e[1;32m'
@@ -431,16 +438,33 @@ function cmd_swapfile() {
 	echo -e "Use ${YELLOW}swapon -s${NC} to see the changes of your swapfile and ${YELLOW}free -m${NC} to see the total available memory"
 }
 
+function cmd_systemctlall() {
+	# <$1 = profile_name> | <$2 = command>
+
+	local -A conf=$(get_conf .dupmn/dupmn.conf)
+	local -A prof=$(get_conf .dupmn/$1)
+
+	local count=${conf[$1]}
+	local coin_name="${prof[COIN_NAME]}"
+
+	trap '' 2
+	for (( i=1; i<=$count; i++ )); do
+		echo -e "${CYAN}systemctl $2 $coin_name-$i.service${NC}"
+		systemctl $2 $coin_name-$i.service
+	done
+	trap 2
+}
+
 function cmd_help() {
 	echo -e "Options:\n" \
 			"  - ${YELLOW}dupmn profadd <prof_file> <prof_name>       ${NC}Adds a profile with the given name that will be used to create duplicates of the masternode\n" \
 			"  - ${YELLOW}dupmn profdel <prof_name>                   ${NC}Deletes the given profile name, this will uninstall too any duplicated instance that uses this profile\n" \
 			"  - ${YELLOW}dupmn install <prof_name>                   ${NC}Install a new instance based on the parameters of the given profile name\n" \
 			"  - ${YELLOW}dupmn list                                  ${NC}Shows the amount of duplicated instances of every masternode\n" \
-			"  - ${YELLOW}dupmn uninstall <prof_name> <number>        ${NC}Uninstall the specified instance of the given profile name\n" \
-			"  - ${YELLOW}dupmn uninstall <prof_name> all             ${NC}Uninstall all the duplicated instances of the given profile name (but not the main instance)\n" \
+			"  - ${YELLOW}dupmn uninstall <prof_name> <number>        ${NC}Uninstall the specified instance of the given profile name, you can put \"all\" instead of a number to uninstall all the duplicated instances\n" \
 			"  - ${YELLOW}dupmn rpcchange <prof_name> <number> [port] ${NC}Changes the RPC port used from the given number instance with the new one (or finds a new one by itself if no port is given)\n" \
-			"  - ${YELLOW}dupmn swapfile <size_in_mbytes>             ${NC}Creates, changes or deletes (if parameter is 0) a swapfile of the given size in MB to increase the virtual memory" 
+			"  - ${YELLOW}dupmn swapfile <size_in_mbytes>             ${NC}Creates, changes or deletes (if parameter is 0) a swapfile of the given size in MB to increase the virtual memory\n" \
+			"  - ${YELLOW}dupmn systemctlall <prof_name> <command>    ${NC}Applies the systemctl command to all the duplicated instances of the given profile name (but not the main instance)"
 }
 
 function main() {
@@ -507,6 +531,13 @@ function main() {
 				exit
 			fi
 			cmd_swapfile "$2"
+			;;
+		"systemctlall")
+			if [ -z "$3" ]; then 
+				echo -e "${YELLOW}dupmn systemctlall <prof_name> <command>${NC} requires a profile name and a command as parameters"
+			fi
+			prof_exists "$2"
+			cmd_systemctlall "$2" "$3"
 			;;
 		"help") 
 			cmd_help
