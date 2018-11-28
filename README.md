@@ -1,6 +1,6 @@
 # Duplicate MasterNode (dupmn)
 
-A script to easily create and manage multiple masternodes of the same coin in the same VPS, initially made for BCARD, can be adapted for almost any other coin.
+A script to easily create and manage multiple masternodes of the same coin in the same VPS, initially made for BCARD, can be adapted for almost any other coin (a few coins needs a 2nd IP and this script won't work for these ones... yet).
 
 # How to install
 
