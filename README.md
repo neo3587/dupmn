@@ -9,7 +9,7 @@ On your VPS type:
 wget -q https://raw.githubusercontent.com/neo3587/dupmn/master/dupmn_install.sh
 bash dupmn_install.sh
 ```
-Then you can remove the installer script if you want: `rm -rf dupmn_install.sh`
+Then you can remove the installer script if you want: `rm -rf dupmn_install.sh` (note that running the installer script again, will check if there's a update available, so you may want to keep the script).
 
 # Commands
 
