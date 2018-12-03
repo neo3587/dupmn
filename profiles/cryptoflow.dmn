@@ -1,0 +1,6 @@
+COIN_NAME="cryptoflow"
+COIN_PATH="/usr/local/bin/"
+COIN_DAEMON="cryptoflowd"
+COIN_CLI="cryptoflow-cli"
+COIN_FOLDER="/root/.cryptoflow"
+COIN_CONFIG="cryptoflow.conf"
