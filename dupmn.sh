@@ -1,7 +1,6 @@
 #!/bin/bash
 
 # TODO:
-# - dupmn reinstall <profile_name> <instance_number>
 # - avoid that people can create a profile named dupmn.conf, for gods sake...
 # - dupmn ipadd <ip> # will require hard restart
 # - dupmn ipdel <ip> # not main one
@@ -210,17 +209,16 @@ function cmd_install() {
 
 	echo -e "===================================================================================================\
 			\n${BLUE}$coin_name${NC} duplicated masternode ${CYAN}number $dup_count${NC} should be now up and trying to sync with the blockchain.\
-			\nThe duplicated masternode uses the same IP and port than the original one, but the private key is different and obviously it requires a different transaction (you cannot have 2 masternodes with the same transaction).\
-			\nNew RPC port is ${MAGENTA}$new_rpc${NC} (other programs may not be able to use this port, but you can change it with ${MAGENTA}dupmn rpcchange $1 $dup_count PORT_NUMBER${NC})\
+			\nThe duplicated masternode uses the same IP and PORT than the original one, but the private key is different and obviously it requires a different transaction (you cannot have 2 masternodes with the same transaction).\
+			\nRPC port is ${MAGENTA}$new_rpc${NC}, remember put in 'masternode.conf' the same PORT than the original masternode, NOT this one (other programs might want to use this port which causes a conflict, but you can change it with ${MAGENTA}dupmn rpcchange $1 $dup_count PORT_NUMBER${NC})\
 			\nStart:              ${RED}systemctl start   $1-$dup_count.service${NC}\
 			\nStop:               ${RED}systemctl stop    $1-$dup_count.service${NC}\
 			\nStart on reboot:    ${RED}systemctl enable  $1-$dup_count.service${NC}\
 			\nNo start on reboot: ${RED}systemctl disable $1-$dup_count.service${NC}\
 			\n(Currently configured to start on reboot)\
 			\nDUPLICATED MASTERNODE PRIVATEKEY is: ${GREEN}$new_key${NC}\
-			\nWait until the duplicated masternode is synced with the blockchain before trying to start it.\
-			\nFor check masternode status just use: ${GREEN}$coin_cli-$dup_count masternode status${NC} (if says \"Hot Node\" => synced).\
-			\nNOTE: ${GREEN}$coin_cli-0${NC} and ${GREEN}$coin_daemon-0${NC} are just a reference to the 'main masternode', not a duplicated one.\
+			\nTo check the masternode status just use: ${GREEN}$coin_cli-$dup_count masternode status${NC} (Wait until the new masternode is synced with the blockchain before trying to start it).\
+			\nNOTE 1: ${GREEN}$coin_cli-0${NC} and ${GREEN}$coin_daemon-0${NC} are just a reference to the 'main masternode', not a created one with dupmn.\
 			\nNOTE 2: You can use ${GREEN}$coin_cli-all [parameters]${NC} and ${GREEN}$coin_daemon-all [parameters]${NC} to apply the parameters on all masternodes. Example: ${GREEN}$coin_cli-all masternode status${NC}\
 			\n==================================================================================================="
 
@@ -236,15 +234,24 @@ function cmd_install() {
 	fi
 }
 
-function cmd_list() {
-	local -A conf=$(get_conf .dupmn/dupmn.conf)
-	if [ ${#conf[@]} -eq 0 ]; then 
-		echo -e "(no profiles added)"
-	else
-		for var in "${!conf[@]}"; do
-			echo -e "$var : ${conf[$var]}"
-		done
+function cmd_reinstall() {
+	# <$1 = profile_name> | <$2 = instance_number>
+	
+	if [[ ! $($coin_cli getblockcount) =~ ^[0-9]+$ ]]; then
+		echo -e "Main masternode must be running to create a duplicate masternode, use ${GREEN}$coin_daemon -daemon${NC} to start the main masternode"
+		exit
 	fi
+
+	systemctl stop $1-$(($2)).service
+	rm -rf $coin_folder$(($2))
+
+	local tmp_dup_count=$dup_count
+	dup_count=$(($2-1))
+	cmd_install $1 
+	echo -e "#!/bin/bash\nfor (( i=0; i<=$tmp_dup_count; i++ )) do\n echo -e MN\$i:\n $coin_cli-\$i \$@\ndone"    > /usr/bin/$coin_cli-all
+	echo -e "#!/bin/bash\nfor (( i=0; i<=$tmp_dup_count; i++ )) do\n echo -e MN\$i:\n $coin_daemon-\$i \$@\ndone" > /usr/bin/$coin_daemon-all
+	chmod +x /usr/bin/$coin_cli-all
+	chmod +x /usr/bin/$coin_daemon-all
 }
 
 function cmd_uninstall() {
@@ -343,6 +350,28 @@ function cmd_rpcchange() {
 	echo -e "${BLUE}$1${NC} instance ${CYAN}number $(($2))${NC} is now listening the rpc port ${MAGENTA}$(($new_port))${NC}"
 }
 
+function cmd_systemctlall() {
+	# <$1 = profile_name> | <$2 = command>
+
+	trap '' 2
+	for (( i=1; i<=$dup_count; i++ )); do
+		echo -e "${CYAN}systemctl $2 $coin_name-$i.service${NC}"
+		systemctl $2 $coin_name-$i.service
+	done
+	trap 2
+}
+
+function cmd_list() {
+	local -A conf=$(get_conf .dupmn/dupmn.conf)
+	if [ ${#conf[@]} -eq 0 ]; then 
+		echo -e "(no profiles added)"
+	else
+		for var in "${!conf[@]}"; do
+			echo -e "$var : ${conf[$var]}"
+		done
+	fi
+}
+
 function cmd_swapfile() {
 	# <$1 = size_in_mbytes>
 
@@ -398,27 +427,17 @@ function cmd_swapfile() {
 	echo -e "Use ${YELLOW}swapon -s${NC} to see the changes of your swapfile and ${YELLOW}free -m${NC} to see the total available memory"
 }
 
-function cmd_systemctlall() {
-	# <$1 = profile_name> | <$2 = command>
-
-	trap '' 2
-	for (( i=1; i<=$dup_count; i++ )); do
-		echo -e "${CYAN}systemctl $2 $coin_name-$i.service${NC}"
-		systemctl $2 $coin_name-$i.service
-	done
-	trap 2
-}
-
 function cmd_help() {
 	echo -e "Options:\n" \
 			"  - ${YELLOW}dupmn profadd <prof_file> <prof_name>       ${NC}Adds a profile with the given name that will be used to create duplicates of the masternode\n" \
 			"  - ${YELLOW}dupmn profdel <prof_name>                   ${NC}Deletes the given profile name, this will uninstall too any duplicated instance that uses this profile\n" \
 			"  - ${YELLOW}dupmn install <prof_name>                   ${NC}Install a new instance based on the parameters of the given profile name\n" \
-			"  - ${YELLOW}dupmn list                                  ${NC}Shows the amount of duplicated instances of every masternode\n" \
-			"  - ${YELLOW}dupmn uninstall <prof_name> <number>        ${NC}Uninstall the specified instance of the given profile name, you can put \"all\" instead of a number to uninstall all the duplicated instances\n" \
+			"  - ${YELLOW}dupmn reinstall <prof_name> <number>        ${NC}Reinstalls the specified instance, this is just in case if the instance is giving problems\n" \
+			"  - ${YELLOW}dupmn uninstall <prof_name> <number>        ${NC}Uninstall the specified instance of the given profile name, you can put ${YELLOW}all${NC} instead of a number to uninstall all the duplicated instances\n" \
 			"  - ${YELLOW}dupmn rpcchange <prof_name> <number> [port] ${NC}Changes the RPC port used from the given number instance with the new one (or finds a new one by itself if no port is given)\n" \
-			"  - ${YELLOW}dupmn swapfile <size_in_mbytes>             ${NC}Creates, changes or deletes (if parameter is 0) a swapfile of the given size in MB to increase the virtual memory\n" \
-			"  - ${YELLOW}dupmn systemctlall <prof_name> <command>    ${NC}Applies the systemctl command to all the duplicated instances of the given profile name (but not the main instance)"
+			"  - ${YELLOW}dupmn systemctlall <prof_name> <command>    ${NC}Applies the systemctl command to all the duplicated instances of the given profile name (but not the main instance)\n" \
+			"  - ${YELLOW}dupmn list                                  ${NC}Shows the amount of duplicated instances of every masternode\n" \
+			"  - ${YELLOW}dupmn swapfile <size_in_mbytes>             ${NC}Creates, changes or deletes (if parameter is 0) a swapfile of the given size in MB to increase the virtual memory"			
 }
 
 function main() {
@@ -456,6 +475,8 @@ function main() {
 		coin_config="${prof[COIN_CONFIG]}"
 		rpc_port="${prof[RPC_PORT]}"
 		dup_count=$((${conf[$1]}))
+
+		# check here if binaries and folders exists
 	}
 
 	function instance_valid() {
@@ -505,8 +526,14 @@ function main() {
 			load_profile "$2"
 			cmd_install "$2"
 			;;
-		"list")
-			cmd_list
+		"reinstall")
+			if [[ -z "$3" ]]; then
+				echo -e "${YELLOW}dupmn reinstall <coin_name> <number>${NC} requires a profile name and a instance as parameters"
+				exit
+			fi
+			load_profile "$2"
+			instance_valid "$2" "$3"
+			cmd_reinstall "$2" "$3"
 			;;
 		"uninstall")
 			if [[ -z "$3" ]]; then
@@ -528,13 +555,6 @@ function main() {
 			instance_valid "$2" "$3"
 			cmd_rpcchange "$2" "$3" "$4"
 			;;
-		"swapfile")
-			if [[ -z "$2" ]]; then
-				echo -e "${YELLOW}dupmn swapfile <size_in_mbytes>${NC} requires a number as parameter"
-				exit
-			fi
-			cmd_swapfile "$2"
-			;;
 		"systemctlall")
 			if [[ -z "$3" ]]; then
 				echo -e "${YELLOW}dupmn systemctlall <prof_name> <command>${NC} requires a profile name and a command as parameters"
@@ -542,6 +562,16 @@ function main() {
 			fi
 			load_profile "$2"
 			cmd_systemctlall "$2" "$3"
+			;;
+		"list")
+			cmd_list
+			;;
+		"swapfile")
+			if [[ -z "$2" ]]; then
+				echo -e "${YELLOW}dupmn swapfile <size_in_mbytes>${NC} requires a number as parameter"
+				exit
+			fi
+			cmd_swapfile "$2"
 			;;
 		"help")
 			cmd_help
