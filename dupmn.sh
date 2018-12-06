@@ -82,7 +82,10 @@ function cmd_profadd() {
 		fi
 	done
 
-	if [ ! -d ".dupmn" ]; then
+	if [ $2 = "dupmn.conf" ]; then 
+		echo -e "From the infinite amount of possible names for the profile and you had to choose the only one that you can't use... for god sake..."
+		exit
+	elif [ ! -d ".dupmn" ]; then
 		mkdir ".dupmn"
 	fi
 	if [ ! -f ".dupmn/dupmn.conf" ]; then
@@ -160,10 +163,7 @@ function cmd_install() {
 		fi
 	}
 
-	if [ $1 = "dupmn.conf" ]; then 
-		echo -e "From the infinite amount of possible names for the profile and you had to choose the only one that you can't use... for god sake..."
-		exit
-	elif [ ! -d "$coin_folder" ]; then
+	if [ ! -d "$coin_folder" ]; then
 		echo -e "$coin_folder folder can't be found, $coin_name is not installed in the system or the given profile has a wrong parameter"
 		exit
 	elif [ ! "$(command -v $coin_daemon)" ]; then
