@@ -1,7 +1,6 @@
 #!/bin/bash
 
 # TODO:
-# - avoid that people can create a profile named dupmn.conf, for gods sake...
 # - dupmn ipadd <ip> # will require hard restart
 # - dupmn ipdel <ip> # not main one
 # - dupmn ipinstall <profile_name> <ip> # repeated ip => just change rpcport + listen=0
@@ -161,7 +160,10 @@ function cmd_install() {
 		fi
 	}
 
-	if [ ! -d "$coin_folder" ]; then
+	if [ $1 = "dupmn.conf" ]; then 
+		echo -e "From the infinite amount of possible names for the profile and you had to choose the only one that you can't use... for god sake..."
+		exit
+	elif [ ! -d "$coin_folder" ]; then
 		echo -e "$coin_folder folder can't be found, $coin_name is not installed in the system or the given profile has a wrong parameter"
 		exit
 	elif [ ! "$(command -v $coin_daemon)" ]; then
