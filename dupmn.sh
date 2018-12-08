@@ -4,7 +4,6 @@
 # - dupmn ipadd <ip> # will require hard restart
 # - dupmn ipdel <ip> # not main one
 # - dupmn ipinstall <profile_name> <ip> # repeated ip => just change rpcport + listen=0
-# - dupmn iplist
 
 
 readonly RED='\e[1;31m'
@@ -311,6 +310,13 @@ function cmd_uninstall() {
 	fi
 }
 
+function cmd_iplist() {
+	echo -e "${GREEN}IPv4:${NC}"
+	echo -e $(ifconfig | grep -Eo 'inet (addr:)?([0-9]*\.){3}[0-9]*' | grep -Eo '([0-9]*\.){3}[0-9]*' | grep -v '127.0.0.1')
+	echo -e "${GREEN}IPv6:${NC}"
+	echo -e $(ifconfig | awk '/inet6/{print $3}' | grep -v '::1/128' | cut -d / -f1)
+}
+
 function cmd_rpcchange() {
 	# <$1 = profile_name> | <$2 = instance_number> | [$3 = port_number]
 
@@ -436,6 +442,7 @@ function cmd_help() {
 			"  - ${YELLOW}dupmn install <prof_name>                   ${NC}Install a new instance based on the parameters of the given profile name\n" \
 			"  - ${YELLOW}dupmn reinstall <prof_name> <number>        ${NC}Reinstalls the specified instance, this is just in case if the instance is giving problems\n" \
 			"  - ${YELLOW}dupmn uninstall <prof_name> <number>        ${NC}Uninstall the specified instance of the given profile name, you can put ${YELLOW}all${NC} instead of a number to uninstall all the duplicated instances\n" \
+			"  - ${YELLOW}dupmn iplist                                ${NC}Shows all your configurated IPv4 and IPv6\n" \
 			"  - ${YELLOW}dupmn rpcchange <prof_name> <number> [port] ${NC}Changes the RPC port used from the given number instance with the new one (or finds a new one by itself if no port is given)\n" \
 			"  - ${YELLOW}dupmn systemctlall <prof_name> <command>    ${NC}Applies the systemctl command to all the duplicated instances of the given profile name (but not the main instance)\n" \
 			"  - ${YELLOW}dupmn list                                  ${NC}Shows the amount of duplicated instances of every masternode\n" \
@@ -547,6 +554,9 @@ function main() {
 				instance_valid "$2" "$3"
 			fi
 			cmd_uninstall "$2" "$3"
+			;;
+		"iplist")
+			cmd_iplist
 			;;
 		"rpcchange")
 			if [[ -z "$3" ]]; then
