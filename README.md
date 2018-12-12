@@ -2,6 +2,8 @@
 
 A script to easily create and manage multiple masternodes of the same coin in the same VPS, initially made for BCARD, can be adapted for almost any other coin (a few coins needs a 2nd IP and this script won't work for these ones... yet).
 
+Note: For any technical question, check <a href="https://github.com/neo3587/dupmn/wiki/FAQs">the FAQ</a> (still work in progress)
+
 # How to install
 
 On your VPS type:
