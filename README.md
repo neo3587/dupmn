@@ -4,7 +4,16 @@ A script to easily create and manage multiple masternodes of the same coin in th
 
 Note: For any technical question not resolved in this readme, check <a href="https://github.com/neo3587/dupmn/wiki/FAQs">the FAQ</a> (still work in progress)
 
-# How to install
+# Index
+
+- [How to install](#how-to-install)
+- [Commands](#commands)
+- [Usage example](#usage-example)
+- [Profile creation](#profile-creation)
+- [Considerations](#considerations)
+- [Additional](#additional)
+
+# <a name ="how-to-install"></a> How to install
 
 On your VPS type:
 ```
@@ -13,7 +22,7 @@ bash dupmn_install.sh
 ```
 Then you can remove the installer script if you want: `rm -rf dupmn_install.sh` (note that running the installer script again, will check if there's a update available, so you may want to keep the script).
 
-# Commands
+# <a name ="commands"></a> Commands
 
 - `dupmn profadd <profile_file> <profile_name>` : Adds a profile with the given name that will be used to create duplicates of the masternode.
 - `dupmn profdel <profile_name>` : Deletes the saved profile with the given name and uninstalls the duplicated instances that uses that profile.
@@ -25,7 +34,7 @@ Then you can remove the installer script if you want: `rm -rf dupmn_install.sh` 
 - `dupmn list` : Shows the amount of duplicated instances of every masternode.
 - `dupmn swapfile <size_in_mbytes>` : Creates/changes or deletes (if value is 0) a swapfile to increase the virtual memory, allowing to fit more masternodes in the same VPS, recommended size is 150 MB for each masternode (example: 3 masternodes => `dupmn swapfile 450`), note that some masternodes might be more 'RAM hungry'.
 
-# Usage example
+# <a name ="usage-example"></a> Usage example
 
 Usage example based on the CARDbuyers profile.
 ```
@@ -70,7 +79,7 @@ Using `dupmn install CARDbuyers` will show you the masternode private key for th
 
 Note: `dupmn install CARDbuyers` will show you also a different rpc port, this is NOT the port that you have to add in the `masternode.conf` file, every masternode will use the same port (48451 in case of CARDbuyers).
 
-# Profile configuration
+# <a name ="profile-creation"></a> Profile creation
 
 Using the CARDbuyers.dmn profile as example, you can create your own profile to fit with any other coin:
 ```
@@ -90,11 +99,11 @@ dupmn install othercoin
 
 Note: The .dmn extension is completely optional, it is done in this way to differentiate the profile file from others.
 
-# Considerations
+# <a name ="considerations"></a> Considerations
 
 A VPS doesn't have unlimited resources, creating too many instances may cause Out-Of-Memory error since MNs are a bit "RAM hungry" (can be partially fixed with `dupmn swapfile` command), there's also a limited hard-disk space and the blockchain increases in size everyday (so be sure to have a lot of free hard disk space, can be checked with `df -h`), and VPS providers usually puts a limit on monthly network bandwith (so running too many instances may get you to that limit).
 
-# Additional
+# <a name ="additional"></a> Additional
 
 ```
 BTC Donations:   3HE1kwgHEWvxBa38NHuQbQQrhNZ9wxjhe7
