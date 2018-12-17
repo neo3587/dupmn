@@ -29,10 +29,12 @@ Then you can remove the installer script if you want: `rm -rf dupmn_install.sh` 
 - `dupmn install <profile_name>` : Install a new instance based on the parameters of the given profile name.
 - `dupmn reinstall <profile_name> <number>` : Reinstalls the specified instance, this is just in case if the instance is giving problems.
 - `dupmn uninstall <profile_name> <number>` : Uninstall the specified instance of the given profile name, you can put "all" instead of a number to uninstall all the duplicated instances.
+- `dupmn iplist` : Shows your current IPv4 and IPv6 addresses (this command will become more useful once all the ip stuff is done).
 - `dupmn rpcchange <profile_name> <number> [port]` : Changes the rpc port of the given instance number, this is only in case that by chance it causes a conflict with another application that uses the same port (if no port is provided, it will automatically find any free port).
 - `dupmn systemctlall <profile_name> <command>` : Applies the systemctl command to all services created with the given profile (won't affect the main node).
 - `dupmn list` : Shows the amount of duplicated instances of every masternode.
 - `dupmn swapfile <size_in_mbytes>` : Creates/changes or deletes (if value is 0) a swapfile to increase the virtual memory, allowing to fit more masternodes in the same VPS, recommended size is 150 MB for each masternode (example: 3 masternodes => `dupmn swapfile 450`), note that some masternodes might be more 'RAM hungry'.
+- `dupmn help` : Just shows the available commands in the console.
 
 # <a name ="usage-example"></a> Usage example
 
