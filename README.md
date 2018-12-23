@@ -36,6 +36,8 @@ Then you can remove the installer script if you want: `rm -rf dupmn_install.sh` 
 - `dupmn swapfile <size_in_mbytes>` : Creates/changes or deletes (if value is 0) a swapfile to increase the virtual memory, allowing to fit more masternodes in the same VPS, recommended size is 150 MB for each masternode (example: 3 masternodes => `dupmn swapfile 450`), note that some masternodes might be more 'RAM hungry'.
 - `dupmn help` : Just shows the available commands in the console.
 
+Note: `<parameter>` means required, `[parameter]` means optional.
+
 # <a name ="usage-example"></a> Usage example
 
 Usage example based on the CARDbuyers profile.
