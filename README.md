@@ -17,6 +17,7 @@ Note: For any technical question not resolved in this readme, check <a href="htt
 
 On your VPS type:
 ```
+apt-get install lsof
 wget -q https://raw.githubusercontent.com/neo3587/dupmn/master/dupmn_install.sh
 bash dupmn_install.sh
 ```
