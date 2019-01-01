@@ -1,9 +1,16 @@
 #!/bin/bash
 
+# Author: neo3587
+# Source: https://github.com/neo3587/dupmn
+
 # TODO:
 # - dupmn ipadd <ip> # will require hard restart
 # - dupmn ipdel <ip> # not main one
 # - dupmn ipinstall <profile_name> <ip> # repeated ip => just change rpcport + listen=0
+# options (all of them requires a lot of debug for ipadd and ipdel): 
+#	1. /etc/network/interfaces : tricky and dangerous
+#   2. /etc/init.d/dupmn_ip_manager => ifconfig add eth0:0 IP_ADDR netmask 255.255.255.0 up : not even sure if it will work
+#   3. /etc/rc.local => eth0 IP_ADDR netmask 255.255.255.0 : viable
 
 
 readonly RED='\e[1;31m'
@@ -34,14 +41,12 @@ function get_conf() {
 	done
 	echo -e "( $str_map )"
 }
-
 function port_check() {
 	# <$1 = port_number>
 	if [ ! $(lsof -Pi :$1 -sTCP:LISTEN -t) ]; then
 		echo -e 1
 	fi
 }
-
 function find_port() {
 	# <$1 = initial_check>
 	for (( i=$1; i<=49151; i++ )); do
@@ -57,13 +62,26 @@ function find_port() {
 		fi
 	done
 }
-
 function is_number() {
 	# <$1 = number>
 	if [[ $1 =~ ^[0-9]+$ ]]; then 
 		echo -e "1"
 	fi
 }
+function conf_set_value() {
+	# <$1 = conf_file> | <$2 = key> | <$3 = value> | [$4 = force_create]
+	(grep -Poq "(?<=$2=).*" $1 && sed -i "/^$2=/s/=.*/=$3/" $1) || ([[ $4 == "1" ]] && echo -e "$2=$3" >> $1)
+}
+function get_ips() {
+	# <$1 = 4 or 6>
+
+	if [[ $1 = "4" ]]; then
+		echo -e $(ifconfig | grep -Eo 'inet (addr:)?([0-9]*\.){3}[0-9]*' | grep -Eo '([0-9]*\.){3}[0-9]*' | grep -v '127.0.0.1')
+	elif [[ $1 = "6" ]]; then
+		echo -e $(ifconfig | awk '/inet6/{print $3}' | grep -v '::1/128' | cut -d / -f1)
+	fi
+}
+
 
 function cmd_profadd() {
 	# <$1 = profile_file> | <$2 = profile_name>
@@ -109,7 +127,6 @@ function cmd_profadd() {
 
 	echo -e "${BLUE}$2${NC} profile successfully added, use ${GREEN}dupmn install $2${NC} to create a new instance of the masternode"
 }
-
 function cmd_profdel() {
 	# <$1 = profile_name>
 
@@ -124,7 +141,6 @@ function cmd_profdel() {
 	rm -rf /usr/bin/$coin_cli-all
 	rm -rf .dupmn/$1
 }
-
 function cmd_install() {
 	# <$1 = profile_name>
 
@@ -171,6 +187,9 @@ function cmd_install() {
 	elif [ ! "$(command -v $coin_cli)" ]; then
 		echo -e "$coin_cli command can't be found, $coin_name is not installed in the system or the given profile has a wrong parameter"
 		exit
+	elif [ ! "$(command -v lsof)" ]; then 
+		echo -e "lsof is not installed in the system, use ${CYAN}apt-get install lsof${NC} and retry the installation"
+		exit
 	fi
 
 	dup_count=$(($dup_count+1))
@@ -187,9 +206,9 @@ function cmd_install() {
 	mkdir $new_folder
 	cp $coin_folder/$coin_config $new_folder
 
-	grep -Poq '(?<=rpcport=).*'           $new_folder/$coin_config && sed -i "/^rpcport=/s/=.*/=$new_rpc/"           $new_folder/$coin_config || echo -e "rpcport=$new_rpc"           >> $new_folder/$coin_config
-	grep -Poq '(?<=listen=).*'            $new_folder/$coin_config && sed -i "/^listen=/s/=.*/=0/"                   $new_folder/$coin_config || echo -e "listen=0"                   >> $new_folder/$coin_config
-	grep -Poq '(?<=masternodeprivkey=).*' $new_folder/$coin_config && sed -i "/^masternodeprivkey=/s/=.*/=$new_key/" $new_folder/$coin_config || echo -e "masternodeprivkey=$new_key" >> $new_folder/$coin_config
+	conf_set_value $new_folder/$coin_config "rpcport"           $new_rpc 1
+	conf_set_value $new_folder/$coin_config "listen"            "0"      1
+	conf_set_value $new_folder/$coin_config "masternodeprivkey" $new_key 1
 
 	echo -e "#!/bin/bash\n$coin_cli \$@"    > /usr/bin/$coin_cli-0
 	echo -e "#!/bin/bash\n$coin_daemon \$@" > /usr/bin/$coin_daemon-0
@@ -204,7 +223,7 @@ function cmd_install() {
 	chmod +x /usr/bin/$coin_cli-all
 	chmod +x /usr/bin/$coin_daemon-all
 
-	sed -i "/^$1=/s/=.*/=$dup_count/" .dupmn/dupmn.conf
+	conf_set_value .dupmn/dupmn.conf $1 $dup_count
 
 	local sysmd_res=$(configure_systemd $1 $dup_count)
 
@@ -234,7 +253,6 @@ function cmd_install() {
 				\nThere's also the chance that this could be a false positive error (so actually everything is ok), anyway please use the commands above to investigate."
 	fi
 }
-
 function cmd_reinstall() {
 	# <$1 = profile_name> | <$2 = instance_number>
 	
@@ -254,7 +272,6 @@ function cmd_reinstall() {
 	chmod +x /usr/bin/$coin_cli-all
 	chmod +x /usr/bin/$coin_daemon-all
 }
-
 function cmd_uninstall() {
 	# <$1 = profile_name> | <$2 = instance_number/all>
 
@@ -309,14 +326,32 @@ function cmd_uninstall() {
 		systemctl daemon-reload
 	fi
 }
+function cmd_ipinstall() {
+	# <$1 = profile_name> | <$2 = ip>
+	
+	if [[ "$2" =~ $(get_ips 4) ]]; then
+		conf_set_value $1 "onlynet" "IPv4"
+	elif [[ "$2" =~ $(get_ips 6) ]]; then
+		conf_set_value $1 "onlynet" "IPv6"
+	else 
+		echo -e "$2 ip cannot be found, use ${GREEN}dupmn iplist${NC} to check your current available IPs"
+		exit 
+	fi
 
+	conf_set_value $1 "listen" "1"
+	conf_set_value $1 "externalip" $3
+	# .conf may have externalip=IP or masternodeaddr=IP:PORT
+}
 function cmd_iplist() {
 	echo -e "${GREEN}IPv4:${NC}"
-	echo -e $(ifconfig | grep -Eo 'inet (addr:)?([0-9]*\.){3}[0-9]*' | grep -Eo '([0-9]*\.){3}[0-9]*' | grep -v '127.0.0.1')
+	for ip in $(get_ips 4); do
+		echo -e " $ip"
+	done
 	echo -e "${GREEN}IPv6:${NC}"
-	echo -e $(ifconfig | awk '/inet6/{print $3}' | grep -v '::1/128' | cut -d / -f1)
+	for ip in $(get_ips 6); do
+		echo -e " $ip"
+	done
 }
-
 function cmd_rpcchange() {
 	# <$1 = profile_name> | <$2 = instance_number> | [$3 = port_number]
 
@@ -357,7 +392,6 @@ function cmd_rpcchange() {
 
 	echo -e "${BLUE}$1${NC} instance ${CYAN}number $(($2))${NC} is now listening the rpc port ${MAGENTA}$(($new_port))${NC}"
 }
-
 function cmd_systemctlall() {
 	# <$1 = profile_name> | <$2 = command>
 
@@ -368,7 +402,6 @@ function cmd_systemctlall() {
 	done
 	trap 2
 }
-
 function cmd_list() {
 	local -A conf=$(get_conf .dupmn/dupmn.conf)
 	if [ ${#conf[@]} -eq 0 ]; then 
@@ -379,7 +412,6 @@ function cmd_list() {
 		done
 	fi
 }
-
 function cmd_swapfile() {
 	# <$1 = size_in_mbytes>
 
@@ -434,7 +466,6 @@ function cmd_swapfile() {
 
 	echo -e "Use ${YELLOW}swapon -s${NC} to see the changes of your swapfile and ${YELLOW}free -m${NC} to see the total available memory"
 }
-
 function cmd_help() {
 	echo -e "Options:\n" \
 			"  - ${YELLOW}dupmn profadd <prof_file> <prof_name>       ${NC}Adds a profile with the given name that will be used to create duplicates of the masternode\n" \
@@ -448,6 +479,7 @@ function cmd_help() {
 			"  - ${YELLOW}dupmn list                                  ${NC}Shows the amount of duplicated instances of every masternode\n" \
 			"  - ${YELLOW}dupmn swapfile <size_in_mbytes>             ${NC}Creates, changes or deletes (if parameter is 0) a swapfile of the given size in MB to increase the virtual memory"			
 }
+
 
 function main() {
 
