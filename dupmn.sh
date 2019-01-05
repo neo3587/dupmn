@@ -4,14 +4,13 @@
 # Source: https://github.com/neo3587/dupmn
 
 # TODO:
-# - check ipinstall ip is same than other dupes and main MN, if true => listen = 0, no bind and advertise
-# - dupmn ipchange <prof_name> <instance> <ip>
+# - check ipinstall ip is same than other dupes and main MN, if true => listen = 0 and advertise
 # - dupmn ipadd <ip> <netmask> <inc> # may require hard reset
 # - dupmn ipdel <ip> # not main one
 # - dupmn list [profile] # extended info for each dup
 # options (all of them requires a lot of debug for ipadd and ipdel):
 #	1. /etc/network/interfaces : tricky and dangerous but most effective, requires hard restart (combinate with 2. to not require hard restart ?)
-#   2. /etc/init.d/dupmn_ip_manager => ifconfig INTERFACE:N IP_ADDR netmask NETMASK up || ip address add IP/MASK_DIGITS dev INTERFACE : viable, no reset needed
+#   2. /etc/init.d/dupmn_ip_manager => ip address add IP/netmask_cidr(NET_MASK) dev INTERFACE : viable, no reset needed
 
 
 readonly RED='\e[1;31m'
@@ -370,7 +369,7 @@ function cmd_ipinstall() {
 
 	if [[ -z $(conf_get_value $coin_folder/$coin_config "bind") ]]; then
 		echo "Applying a tiny modification into the main masternode conf file, this only will be applied this time..."
-		local main_ip=$(get_conf_value $coin_folder/$coin_config "externalip")
+		local main_ip=$(conf_get_value $coin_folder/$coin_config "externalip")
 		main_ip=$([[ -z "$main_ip" ]] && echo $(conf_get_value $new_folder/$coin_config "masternodeaddr") || echo "$main_ip")
 		$(conf_set_value $coin_folder/$coin_config "bind"      $main_ip         1)
 		$coin_cli stop
@@ -406,9 +405,9 @@ function cmd_ipreinstall() {
 	fi
 
 	ip=""
-	if [[ $(get_ips 4) == *"$3" ]]; then
+	if [[ $(echo $(get_ips 4) | grep -w "$2") ]]; then
 		ip="$3"
-	elif [[ $(get_ips 6) == *"$3" ]]; then
+	elif [[ $(echo $(get_ips 6) | grep -w "$2") ]]; then
 		ip="[$3]"
 	else
 		echo -e "$2 ip cannot be found, use ${GREEN}dupmn iplist${NC} to check your current available IPs"
@@ -550,19 +549,19 @@ function cmd_swapfile() {
 }
 function cmd_help() {
 	echo -e "Options:\n" \
-                "  - ${YELLOW}dupmn profadd <prof_file> <prof_name>       ${NC}Adds a profile with the given name that will be used to create duplicates of the masternode\n" \
-                "  - ${YELLOW}dupmn profdel <prof_name>                   ${NC}Deletes the given profile name, this will uninstall too any duplicated instance that uses this profile\n" \
-                "  - ${YELLOW}dupmn install <prof_name>                   ${NC}Install a new instance based on the parameters of the given profile name\n" \
-                "  - ${YELLOW}dupmn reinstall <prof_name> <number>        ${NC}Reinstalls the specified instance, this is just in case if the instance is giving problems\n" \
-                "  - ${YELLOW}dupmn uninstall <prof_name> <number>        ${NC}Uninstall the specified instance of the given profile name, you can put ${YELLOW}all${NC} instead of a number to uninstall all the duplicated instances\n" \
-                "  - ${YELLOW}dupmn iplist                                ${NC}Shows all your configurated IPv4 and IPv6\n" \
-                "  - ${YELLOW}dupmn rpcchange <prof_name> <number> [port] ${NC}Changes the RPC port used from the given number instance with the new one (or finds a new one by itself if no port is given)\n" \
-                "  - ${YELLOW}dupmn systemctlall <prof_name> <command>    ${NC}Applies the systemctl command to all the duplicated instances of the given profile name (but not the main instance)\n" \
-                "  - ${YELLOW}dupmn list                                  ${NC}Shows the amount of duplicated instances of every masternode\n" \
-                "  - ${YELLOW}dupmn swapfile <size_in_mbytes>             ${NC}Creates, changes or deletes (if parameter is 0) a swapfile of the given size in MB to increase the virtual memory\n" \
-                " BETA Options:\n" \
-                "  - ${YELLOW}dupmn ipinstall <prof_name> <ip>            ${NC}Install a new instance based on the parameters of the given profile name that will ue the given IP\n" \
-                "  - ${YELLOW}dupmn ipreinstall <prof_name> <number> <ip> ${NC}Reinstalls the specified instance with the given IP, this is just in case if the instance is giving problems"
+			"  - ${YELLOW}dupmn profadd <prof_file> <prof_name>       ${NC}Adds a profile with the given name that will be used to create duplicates of the masternode\n" \
+			"  - ${YELLOW}dupmn profdel <prof_name>                   ${NC}Deletes the given profile name, this will uninstall too any duplicated instance that uses this profile\n" \
+			"  - ${YELLOW}dupmn install <prof_name>                   ${NC}Install a new instance based on the parameters of the given profile name\n" \
+			"  - ${YELLOW}dupmn reinstall <prof_name> <number>        ${NC}Reinstalls the specified instance, this is just in case if the instance is giving problems\n" \
+			"  - ${YELLOW}dupmn uninstall <prof_name> <number>        ${NC}Uninstall the specified instance of the given profile name, you can put ${YELLOW}all${NC} instead of a number to uninstall all the duplicated instances\n" \
+			"  - ${YELLOW}dupmn iplist                                ${NC}Shows all your configurated IPv4 and IPv6\n" \
+			"  - ${YELLOW}dupmn rpcchange <prof_name> <number> [port] ${NC}Changes the RPC port used from the given number instance with the new one (or finds a new one by itself if no port is given)\n" \
+			"  - ${YELLOW}dupmn systemctlall <prof_name> <command>    ${NC}Applies the systemctl command to all the duplicated instances of the given profile name (but not the main instance)\n" \
+			"  - ${YELLOW}dupmn list                                  ${NC}Shows the amount of duplicated instances of every masternode\n" \
+			"  - ${YELLOW}dupmn swapfile <size_in_mbytes>             ${NC}Creates, changes or deletes (if parameter is 0) a swapfile of the given size in MB to increase the virtual memory\n" \
+			" BETA Options:\n" \
+			"  - ${YELLOW}dupmn ipinstall <prof_name> <ip>            ${NC}Install a new instance based on the parameters of the given profile name that will ue the given IP\n" \
+			"  - ${YELLOW}dupmn ipreinstall <prof_name> <number> <ip> ${NC}Reinstalls the specified instance with the given IP, this is just in case if the instance is giving problems"
 }
 
 
