@@ -4,13 +4,25 @@
 # Source: https://github.com/neo3587/dupmn
 
 # TODO:
+# - check other dupes conf rpcport (just in case they're offline)
 # - check ipinstall ip is same than other dupes and main MN, if true => listen = 0 and advertise
 # - dupmn ipadd <ip> <netmask> <inc> # may require hard reset
 # - dupmn ipdel <ip> # not main one
 # - dupmn list [profile] # extended info for each dup
 # options (all of them requires a lot of debug for ipadd and ipdel):
 #	1. /etc/network/interfaces : tricky and dangerous but most effective, requires hard restart (combinate with 2. to not require hard restart ?)
-#   2. /etc/init.d/dupmn_ip_manager => ip address add IP/netmask_cidr(NET_MASK) dev INTERFACE : viable, no reset needed
+#   2. /etc/init.d/dupmn_ip_manager => ip address add IP/netmask_cidr(NET_MASK) dev INTERFACE : viable, no reset needed, add [Service] ExecStartPre=/bin/sleep 10
+#		#For permanent activation, either a special initscript value per interface will enable privacy or an entry in the /etc/sysctl.conf file like
+#		net.ipv6.conf.eth0.use_tempaddr=2
+#		#Note: interface must already exists with proper name when sysctl.conf is applied. If this is not the case (e.g. after reboot) one has to configure privacy for all interfaces by default:
+#		net.ipv6.conf.all.use_tempaddr=2
+#		net.ipv6.conf.default.use_tempaddr=2
+#		#Changed/added values in /etc/sysctl.conf can be activated during runtime, but at least an interface down/up or a reboot is recommended.
+#		sysctl -p
+
+# TEST:
+# - non-binded main + erased masternodeaddr on dupe
+#
 
 
 readonly RED='\e[1;31m'
@@ -43,24 +55,28 @@ function get_conf() {
 }
 function port_check() {
 	# <$1 = port_number>
-	if [ ! $(lsof -Pi :$1 -sTCP:LISTEN -t) ]; then
+	if [[ ! $(lsof -Pi :$1 -sTCP:LISTEN -t) ]]; then
 		echo -e 1
 	fi
 }
 function find_port() {
 	# <$1 = initial_check>
-	for (( i=$1; i<=49151; i++ )); do
-		if [ $(port_check $i) ]; then
-			echo -e "$i"
-			return
-		fi
+
+	function port_check_loop() {
+		for (( i=$1; i<=$2; i++ )); do
+			if [[ ! "${3}[@]" =~ "${i}" && $(port_check $i) ]]; then
+				echo -e "$i"
+				return
+			fi
+		done
+	}
+
+	local dup_ports=""
+	for (( i=1; i<=$dup_count; i++ )); do
+		dup_ports="$dup_ports $(conf_get_value $coin_folder$i/$coin_config rpcport) "
 	done
-	for (( i=1024; i<$1; i++ )); do
-		if [ $(port_check $i) ]; then
-			echo -e "$i"
-			return
-		fi
-	done
+	local port=$(port_check_loop $1 49151 "( $dup_ports )")
+	[[ ${#port} -gt 0 ]] && echo $port || echo $(port_check_loop 1024 $1 "( $dup_ports )")
 }
 function is_number() {
 	# <$1 = number>
@@ -123,10 +139,10 @@ function install_proc() {
 		exit
 	fi
 
-	dup_count=$(($dup_count+1))
-
 	new_key=$($coin_cli masternode genkey)
 	new_rpc=$(find_port $(($(grep -Po '(?<=RPC_PORT=).*' .dupmn/$1 || grep -Po '(?<=rpcport=).*' $coin_folder/$coin_config || echo -e "1023")+1)))
+
+	dup_count=$(($dup_count+1))
 	new_folder="$coin_folder$dup_count"
 
 	if [[ ! $new_key =~ ^[a-zA-Z0-9]+$ ]]; then
@@ -317,7 +333,7 @@ function cmd_uninstall() {
 		echo -e "Uninstalling ${BLUE}$1${NC} instance ${CYAN}number $(($2))${NC}"
 		rm -rf /usr/bin/$coin_cli-$(($dup_count))
 		rm -rf /usr/bin/$coin_daemon-$(($dup_count))
-		$coin_cli -datadir=$coin_folder$(($2)) stop > /dev/null
+		systemctl stop $coin_name-$(($2)).service
 		sed -i "/^$1=/s/=.*/=$(($dup_count-1))/" ".dupmn/dupmn.conf"
 		echo -e "#!/bin/bash\nfor (( i=0; i<=$(($dup_count-1)); i++ )) do\n echo -e MN\$i:\n $coin_cli-\$i \$@\ndone"    > /usr/bin/$coin_cli-all
 		echo -e "#!/bin/bash\nfor (( i=0; i<=$(($dup_count-1)); i++ )) do\n echo -e MN\$i:\n $coin_daemon-\$i \$@\ndone" > /usr/bin/$coin_daemon-all
@@ -347,24 +363,14 @@ function cmd_ipinstall() {
 
 	echo -e "!!! This command stills in beta state !!!"
 
-	ip=""
-	if [[ $(echo $(get_ips 4) | grep -w "$2") ]]; then
-		ip="$2"
-	elif [[ $(echo $(get_ips 6) | grep -w "$2") ]]; then
-		ip="[$2]"
-	else
-		echo -e "$2 ip cannot be found, use ${GREEN}dupmn iplist${NC} to check your current available IPs"
-		exit
-	fi
-
 	install_proc $1
 
-	local mn_addr_port=$(echo $(conf_get_value $new_folder/$coin_config "masternodeaddr") | rev | cut -d ":" -f1 | rev)
+	local mn_addr_port=$(echo $(conf_get_value $new_folder/$coin_config "masternodeaddr") | rev | cut -d ":" -f1 | rev) 
 	mn_addr_port=$([[ "$mn_addr_port" =~ ^[0-9]+$ ]] && echo ":$mn_addr_port" || echo "")
 
 	$(conf_set_value $new_folder/$coin_config "listen"         "1"              1)
 	$(conf_set_value $new_folder/$coin_config "externalip"     $ip              0)
-	$(conf_set_value $new_folder/$coin_config "masternodeaddr" $ip$mn_addr_port 1)
+	$(conf_set_value $new_folder/$coin_config "masternodeaddr" $ip$mn_addr_port 0)
 	$(conf_set_value $new_folder/$coin_config "bind"           $ip              1)
 
 	if [[ -z $(conf_get_value $coin_folder/$coin_config "bind") ]]; then
@@ -401,16 +407,6 @@ function cmd_ipreinstall() {
 
 	if [[ ! $($coin_cli getblockcount) =~ ^[0-9]+$ ]]; then
 		echo -e "Main masternode must be running to create a duplicate masternode, use ${GREEN}$coin_daemon -daemon${NC} to start the main masternode"
-		exit
-	fi
-
-	ip=""
-	if [[ $(echo $(get_ips 4) | grep -w "$2") ]]; then
-		ip="$3"
-	elif [[ $(echo $(get_ips 6) | grep -w "$2") ]]; then
-		ip="[$3]"
-	else
-		echo -e "$2 ip cannot be found, use ${GREEN}dupmn iplist${NC} to check your current available IPs"
 		exit
 	fi
 
@@ -548,20 +544,20 @@ function cmd_swapfile() {
 	echo -e "Use ${YELLOW}swapon -s${NC} to see the changes of your swapfile and ${YELLOW}free -m${NC} to see the total available memory"
 }
 function cmd_help() {
-	echo -e "Options:\n" \
-			"  - ${YELLOW}dupmn profadd <prof_file> <prof_name>       ${NC}Adds a profile with the given name that will be used to create duplicates of the masternode\n" \
-			"  - ${YELLOW}dupmn profdel <prof_name>                   ${NC}Deletes the given profile name, this will uninstall too any duplicated instance that uses this profile\n" \
-			"  - ${YELLOW}dupmn install <prof_name>                   ${NC}Install a new instance based on the parameters of the given profile name\n" \
-			"  - ${YELLOW}dupmn reinstall <prof_name> <number>        ${NC}Reinstalls the specified instance, this is just in case if the instance is giving problems\n" \
-			"  - ${YELLOW}dupmn uninstall <prof_name> <number>        ${NC}Uninstall the specified instance of the given profile name, you can put ${YELLOW}all${NC} instead of a number to uninstall all the duplicated instances\n" \
-			"  - ${YELLOW}dupmn iplist                                ${NC}Shows all your configurated IPv4 and IPv6\n" \
-			"  - ${YELLOW}dupmn rpcchange <prof_name> <number> [port] ${NC}Changes the RPC port used from the given number instance with the new one (or finds a new one by itself if no port is given)\n" \
-			"  - ${YELLOW}dupmn systemctlall <prof_name> <command>    ${NC}Applies the systemctl command to all the duplicated instances of the given profile name (but not the main instance)\n" \
-			"  - ${YELLOW}dupmn list                                  ${NC}Shows the amount of duplicated instances of every masternode\n" \
-			"  - ${YELLOW}dupmn swapfile <size_in_mbytes>             ${NC}Creates, changes or deletes (if parameter is 0) a swapfile of the given size in MB to increase the virtual memory\n" \
-			" BETA Options:\n" \
-			"  - ${YELLOW}dupmn ipinstall <prof_name> <ip>            ${NC}Install a new instance based on the parameters of the given profile name that will ue the given IP\n" \
-			"  - ${YELLOW}dupmn ipreinstall <prof_name> <number> <ip> ${NC}Reinstalls the specified instance with the given IP, this is just in case if the instance is giving problems"
+	echo -e "Options:\
+			\n  - ${YELLOW}dupmn profadd <prof_file> <prof_name>       ${NC}Adds a profile with the given name that will be used to create duplicates of the masternode\
+			\n  - ${YELLOW}dupmn profdel <prof_name>                   ${NC}Deletes the given profile name, this will uninstall too any duplicated instance that uses this profile\
+			\n  - ${YELLOW}dupmn install <prof_name>                   ${NC}Install a new instance based on the parameters of the given profile name\
+			\n  - ${YELLOW}dupmn reinstall <prof_name> <number>        ${NC}Reinstalls the specified instance, this is just in case if the instance is giving problems\
+			\n  - ${YELLOW}dupmn uninstall <prof_name> <number>        ${NC}Uninstall the specified instance of the given profile name, you can put ${YELLOW}all${NC} instead of a number to uninstall all the duplicated instances\
+			\n  - ${YELLOW}dupmn iplist                                ${NC}Shows all your configurated IPv4 and IPv6\
+			\n  - ${YELLOW}dupmn rpcchange <prof_name> <number> [port] ${NC}Changes the RPC port used from the given number instance with the new one (or finds a new one by itself if no port is given)\
+			\n  - ${YELLOW}dupmn systemctlall <prof_name> <command>    ${NC}Applies the systemctl command to all the duplicated instances of the given profile name (but not the main instance)\
+			\n  - ${YELLOW}dupmn list                                  ${NC}Shows the amount of duplicated instances of every masternode\
+			\n  - ${YELLOW}dupmn swapfile <size_in_mbytes>             ${NC}Creates, changes or deletes (if parameter is 0) a swapfile of the given size in MB to increase the virtual memory\
+			\n${RED}BETA Options:${NC}\
+			\n  - ${YELLOW}dupmn ipinstall <prof_name> <ip>            ${NC}Install a new instance based on the parameters of the given profile name that will ue the given IP\
+			\n  - ${YELLOW}dupmn ipreinstall <prof_name> <number> <ip> ${NC}Reinstalls the specified instance with the given IP, this is just in case if the instance is giving problems"
 }
 
 
@@ -622,6 +618,47 @@ function main() {
 		fi
 	}
 
+	function ip_valid() {
+		# <$1 = IPv4 or IPv6>
+
+		function hexc() {
+			if [[ "$1" != "" ]]; then
+				printf "%x" $(printf "%d" "$(( 0x$1 ))")
+			fi
+		}
+
+		ip=$1
+
+		if [[ $(echo $(get_ips 4) | grep -w "$ip") ]]; then
+			return
+		elif [[ $1 =~ ^[0-9a-f:]+$ && $(echo $1 | grep -o "::" | wc -l) -le 1 ]]; then
+
+			echo $ip | grep -qs "^:" && ip="0${ip}"
+
+			if echo $ip | grep -qs "::"; then
+				ip=$(echo $ip | sed "s/::/$(echo ":::::::::" | sed "s/$(echo $ip | sed 's/[^:]//g')//" | sed 's/:/:0/g')/")
+			fi
+
+			set $(echo $ip | grep -o "[0-9a-f]\+")
+
+			ip=$(echo "$(hexc $1):$(hexc $2):$(hexc $3):$(hexc $4):$(hexc $5):$(hexc $6):$(hexc $7):$(hexc $8)" | sed "s/:0:/::/")
+			while [[ $ip =~ "::0:" ]]; do
+				ip=$(echo $ip | sed 's/::0:/::/g')
+			done
+			while [[ $ip =~ ":::" ]]; do
+				ip=$(echo $ip | sed 's/:::/::/g')
+			done
+
+			if [[ $(echo $(get_ips 6) | grep -w "$ip") ]]; then
+				ip="[$ip]"
+				return
+			fi
+		fi
+
+		echo -e "$ip ip cannot be found or is invalid, use ${GREEN}dupmn iplist${NC} to check your current available IPs"
+		exit
+	}
+
 	if [[ -z "$1" ]]; then
 		echo -e "No command inserted, use ${YELLOW}dupmn help${NC} to see all the available commands"
 		exit
@@ -677,6 +714,7 @@ function main() {
 				exit
 			fi
 			load_profile "$2"
+			ip_valid "$3"
 			cmd_ipinstall "$2" "$3"
 			;;
 		"ipreinstall")
@@ -686,6 +724,7 @@ function main() {
 			fi
 			load_profile "$2"
 			instance_valid "$2" "$3"
+			ip_valid "$4"
 			cmd_reinstall "$2" "$3" "$4"
 			;;
 		"iplist")
