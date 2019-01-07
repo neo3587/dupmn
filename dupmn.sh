@@ -4,7 +4,6 @@
 # Source: https://github.com/neo3587/dupmn
 
 # TODO:
-# - check other dupes conf rpcport (just in case they're offline)
 # - check ipinstall ip is same than other dupes and main MN, if true => listen = 0 and advertise
 # - dupmn ipadd <ip> <netmask> <inc> # may require hard reset
 # - dupmn ipdel <ip> # not main one
@@ -60,7 +59,7 @@ function port_check() {
 	fi
 }
 function find_port() {
-	# <$1 = initial_check>
+	# <$1 = initial_check | $2 = profile_name>
 
 	function port_check_loop() {
 		for (( i=$1; i<=$2; i++ )); do
@@ -72,7 +71,7 @@ function find_port() {
 	}
 
 	local dup_ports=""
-	for (( i=1; i<=$dup_count; i++ )); do
+	for (( i=1; i<=$(conf_get_value .dupmn/dupmn.conf $2); i++ )); do
 		dup_ports="$dup_ports $(conf_get_value $coin_folder$i/$coin_config rpcport) "
 	done
 	local port=$(port_check_loop $1 49151 "( $dup_ports )")
@@ -140,7 +139,7 @@ function install_proc() {
 	fi
 
 	new_key=$($coin_cli masternode genkey)
-	new_rpc=$(find_port $(($(grep -Po '(?<=RPC_PORT=).*' .dupmn/$1 || grep -Po '(?<=rpcport=).*' $coin_folder/$coin_config || echo -e "1023")+1)))
+	new_rpc=$(find_port $(($(grep -Po '(?<=RPC_PORT=).*' .dupmn/$1 || grep -Po '(?<=rpcport=).*' $coin_folder/$coin_config || echo -e "1023")+1)) $1)
 
 	dup_count=$(($dup_count+1))
 	new_folder="$coin_folder$dup_count"
@@ -437,22 +436,11 @@ function cmd_iplist() {
 function cmd_rpcchange() {
 	# <$1 = profile_name> | <$2 = instance_number> | [$3 = port_number]
 
-	if [[ ! $(is_number $2) ]]; then
-		echo -e "${YELLOW}dupmn rpcchange <prof_name> <number> [port]${NC}, <number> must be a number"
-		exit
-	elif [[ $(($2)) -gt $dup_count ]]; then
-		echo -e "Instance ${CYAN}number $(($2))${NC} doesn't exists, there are only ${CYAN}$dup_count${NC} ${BLUE}$1${NC} instances"
-		exit
-	elif [[ $(($2)) = 0 ]]; then
-		echo -e "Instance ${CYAN}number 0${NC} is the main masternode, not a duplicated one, can't change this one"
-		exit
-	fi
-
 	local new_port="$(grep -Po "rpcport=\K.*" $coin_folder$(($2))/$coin_config)";
 
 	if [[ -z "$3" ]]; then
 		echo -e "No port provided, the port will be changed for any other free port..."
-		new_port=$(find_port $new_port)
+		new_port=$(find_port $new_port $1)
 	elif [[ ! $(is_number $3) ]]; then
 		echo -e "${YELLOW}dupmn rpcchange <prof_name> <number> [port]${NC}, [port] must be a number"
 		exit
@@ -485,12 +473,25 @@ function cmd_systemctlall() {
 	trap 2
 }
 function cmd_list() {
-	local -A conf=$(get_conf .dupmn/dupmn.conf)
-	if [ ${#conf[@]} -eq 0 ]; then
-		echo -e "(no profiles added)"
+	# [$1 = profile_name]
+
+	if [[ -z "$1" ]]; then
+		local -A conf=$(get_conf .dupmn/dupmn.conf)
+		if [ ${#conf[@]} -eq 0 ]; then
+			echo -e "(no profiles added)"
+		else
+			for var in "${!conf[@]}"; do
+				echo -e "$var : ${conf[$var]}"
+			done
+		fi
 	else
-		for var in "${!conf[@]}"; do
-			echo -e "$var : ${conf[$var]}"
+		echo -e "${BLUE}$1${NC}: ${CYAN}$dup_count${NC} created nodes with dupmn"
+		for (( i=1; i<=$dup_count; i++ )); do
+			local dup_ip=$(conf_get_value $coin_folder$i/$coin_config "masternodeaddr")
+			echo -e "MN$i:\
+					\n  ip      : ${YELLOW}$([[ -z "$dup_ip" ]] && echo $(conf_get_value $new_folder$i/$coin_config "externalip") || echo "$dup_ip")${NC}\
+					\n  rpcport : ${MAGENTA}$(conf_get_value $coin_folder$i/$coin_config rpcport)${NC}\
+					\n  privkey : ${GREEN}$(conf_get_value $coin_folder$i/$coin_config masternodeprivkey)${NC}"
 		done
 	fi
 }
@@ -553,11 +554,12 @@ function cmd_help() {
 			\n  - ${YELLOW}dupmn iplist                                ${NC}Shows all your configurated IPv4 and IPv6\
 			\n  - ${YELLOW}dupmn rpcchange <prof_name> <number> [port] ${NC}Changes the RPC port used from the given number instance with the new one (or finds a new one by itself if no port is given)\
 			\n  - ${YELLOW}dupmn systemctlall <prof_name> <command>    ${NC}Applies the systemctl command to all the duplicated instances of the given profile name (but not the main instance)\
-			\n  - ${YELLOW}dupmn list                                  ${NC}Shows the amount of duplicated instances of every masternode\
+			\n  - ${YELLOW}dupmn list [prof_name]                      ${NC}Shows the amount of duplicated instances of every masternode, if a profile name is provided, it lists an extended info of the profile instances\
 			\n  - ${YELLOW}dupmn swapfile <size_in_mbytes>             ${NC}Creates, changes or deletes (if parameter is 0) a swapfile of the given size in MB to increase the virtual memory\
 			\n${RED}BETA Options:${NC}\
 			\n  - ${YELLOW}dupmn ipinstall <prof_name> <ip>            ${NC}Install a new instance based on the parameters of the given profile name that will ue the given IP\
-			\n  - ${YELLOW}dupmn ipreinstall <prof_name> <number> <ip> ${NC}Reinstalls the specified instance with the given IP, this is just in case if the instance is giving problems"
+			\n  - ${YELLOW}dupmn ipreinstall <prof_name> <number> <ip> ${NC}Reinstalls the specified instance with the given IP, this is just in case if the instance is giving problems\
+			\n**NOTE**: ${YELLOW}<parameter>${NC} means required, ${YELLOW}[parameter]${NC} means optional."
 }
 
 
@@ -599,7 +601,6 @@ function main() {
 
 		# check here if binaries and folders exists
 	}
-
 	function instance_valid() {
 		# <$1 = profile_name> | <$2 = instance_number>
 
@@ -617,7 +618,6 @@ function main() {
 			exit
 		fi
 	}
-
 	function ip_valid() {
 		# <$1 = IPv4 or IPv6>
 
@@ -748,7 +748,8 @@ function main() {
 			cmd_systemctlall "$2" "$3"
 			;;
 		"list")
-			cmd_list
+			[[ -z "$2" ]] || load_profile "$2"
+			cmd_list $2
 			;;
 		"swapfile")
 			if [[ -z "$2" ]]; then
