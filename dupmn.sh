@@ -7,7 +7,6 @@
 # - check ipinstall ip is same than other dupes and main MN, if true => listen = 0 and advertise
 # - dupmn ipadd <ip> <netmask> <inc> # may require hard reset
 # - dupmn ipdel <ip> # not main one
-# - dupmn list [profile] # extended info for each dup
 # options (all of them requires a lot of debug for ipadd and ipdel):
 #	1. /etc/network/interfaces : tricky and dangerous but most effective, requires hard restart (combinate with 2. to not require hard restart ?)
 #   2. /etc/init.d/dupmn_ip_manager => ip address add IP/netmask_cidr(NET_MASK) dev INTERFACE : viable, no reset needed, add [Service] ExecStartPre=/bin/sleep 10
@@ -362,6 +361,10 @@ function cmd_ipinstall() {
 
 	echo -e "!!! This command stills in beta state !!!"
 
+	# IP repeated check:
+	# local netstat_list=$(netstat -Wlantp | grep LISTEN | grep $coin_daemon)
+	# for each IP => echo netstat_list | grep $ip_from_list
+
 	install_proc $1
 
 	local mn_addr_port=$(echo $(conf_get_value $new_folder/$coin_config "masternodeaddr") | rev | cut -d ":" -f1 | rev) 
@@ -489,7 +492,7 @@ function cmd_list() {
 		for (( i=1; i<=$dup_count; i++ )); do
 			local dup_ip=$(conf_get_value $coin_folder$i/$coin_config "masternodeaddr")
 			echo -e "MN$i:\
-					\n  ip      : ${YELLOW}$([[ -z "$dup_ip" ]] && echo $(conf_get_value $new_folder$i/$coin_config "externalip") || echo "$dup_ip")${NC}\
+					\n  ip      : ${YELLOW}$([[ -z "$dup_ip" ]] && echo $(conf_get_value $coin_folder$i/$coin_config "externalip") || echo "$dup_ip")${NC}\
 					\n  rpcport : ${MAGENTA}$(conf_get_value $coin_folder$i/$coin_config rpcport)${NC}\
 					\n  privkey : ${GREEN}$(conf_get_value $coin_folder$i/$coin_config masternodeprivkey)${NC}"
 		done
