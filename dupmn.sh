@@ -4,6 +4,8 @@
 # Source: https://github.com/neo3587/dupmn
 
 # TODO:
+# - dupmn list [prof_name] => tell if there are repeated rpc ports or missing .conf
+# - dupmn install <prof_name> [copy] => main MN must be stopped and manually started after
 # - check ipinstall ip is same than other dupes and main MN, if true => listen = 0 and advertise
 # - dupmn ipadd <ip> <netmask> <inc> # may require hard reset
 # - dupmn ipdel <ip> # not main one
@@ -564,6 +566,25 @@ function cmd_help() {
 			\n  - ${YELLOW}dupmn ipreinstall <prof_name> <number> <ip> ${NC}Reinstalls the specified instance with the given IP, this is just in case if the instance is giving problems\
 			\n**NOTE**: ${YELLOW}<parameter>${NC} means required, ${YELLOW}[parameter]${NC} means optional."
 }
+function cmd_about() {
+	echo -e "===================================================\
+			 \n   ██████╗ ██╗   ██╗██████╗ ███╗   ███╗███╗   ██╗  \
+			 \n   ██╔══██╗██║   ██║██╔══██╗████╗ ████║████╗  ██║  \
+			 \n   ██║  ██║██║   ██║██████╔╝██╔████╔██║██╔██╗ ██║  \
+			 \n   ██║  ██║██║   ██║██╔═══╝ ██║╚██╔╝██║██║╚██╗██║  \
+			 \n   ██████╔╝╚██████╔╝██║     ██║ ╚═╝ ██║██║ ╚████║  \
+			 \n   ╚═════╝  ╚═════╝ ╚═╝     ╚═╝     ╚═╝╚═╝  ╚═══╝  \
+			 \n                                ╗ made by neo3587 ╔\
+			 \n           Source: ${CYAN}https://github.com/neo3587/dupmn${NC}\
+			 \n   FAQs: ${CYAN}https://github.com/neo3587/dupmn/wiki/FAQs${NC}\
+			 \n  BTC Donations: ${YELLOW}3HE1kwgHEWvxBa38NHuQbQQrhNZ9wxjhe7${NC}\
+			 \n==================================================="
+	if [[ $(diff -q <(cat <(echo "$(curl -s https://raw.githubusercontent.com/neo3587/dupmn/master/dupmn.sh)")) <(cat /usr/bin/dupmn)) ]]; then 
+		echo -e "\nUpdate available, use ${GREEN}bash dupmn_install.sh${NC} to install it\
+			 \nif you deleted the ${YELLOW}dupmn_install.sh${NC} file, get it again with:\
+			 \n${GREEN}wget -q https://raw.githubusercontent.com/neo3587/dupmn/master/dupmn_install.sh${NC}\n"
+	fi
+}
 
 
 function main() {
@@ -763,6 +784,9 @@ function main() {
 			;;
 		"help")
 			cmd_help
+			;;
+		"about")
+			cmd_about
 			;;
 		*)
 			echo -e "Unrecognized parameter: ${RED}$1${NC}"
