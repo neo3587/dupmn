@@ -36,6 +36,7 @@ Then you can remove the installer script if you want: `rm -rf dupmn_install.sh` 
 - `dupmn list` : Shows the amount of duplicated instances of every masternode, if a profile name is provided, it lists an extended info of the profile instances.
 - `dupmn swapfile <size_in_mbytes>` : Creates/changes or deletes (if value is 0) a swapfile to increase the virtual memory, allowing to fit more masternodes in the same VPS, recommended size is 150 MB for each masternode (example: 3 masternodes => `dupmn swapfile 450`), note that some masternodes might be more 'RAM hungry'.
 - `dupmn help` : Just shows the available commands in the console.
+- `dupmn about` : Shows some info related to the script.
 
 Note: `<parameter>` means required, `[parameter]` means optional.
 
