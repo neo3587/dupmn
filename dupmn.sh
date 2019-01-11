@@ -4,8 +4,7 @@
 # Source: https://github.com/neo3587/dupmn
 
 # TODO:
-# - dupmn list [prof_name] => tell if there are repeated rpc ports or missing .conf
-# - dupmn install <prof_name> [copy] => main MN must be stopped and manually started after
+# - dupmn reinstall <prof_name> <instance> [copy] => main MN must be stopped and manually started after
 # - check ipinstall ip is same than other dupes and main MN, if true => listen = 0 and advertise
 # - dupmn ipadd <ip> <netmask> <inc> # may require hard reset
 # - dupmn ipdel <ip> # not main one
@@ -19,10 +18,10 @@
 #		net.ipv6.conf.default.use_tempaddr=2
 #		#Changed/added values in /etc/sysctl.conf can be activated during runtime, but at least an interface down/up or a reboot is recommended.
 #		sysctl -p
-
-# TEST:
-# - non-binded main + erased masternodeaddr on dupe
 #
+# ip bind options:
+#   1. bind main & dupe
+#   2. bind dupe on unused port => need to check if actually can be activated
 
 
 readonly RED='\e[1;31m'
@@ -43,6 +42,7 @@ coin_folder=""
 coin_config=""
 rpc_port=""
 dup_count=""
+ip=""
 
 
 function get_conf() {
@@ -85,45 +85,59 @@ function is_number() {
 	fi
 }
 function configure_systemd() {
-		echo -e "[Unit]\
-		\nDescription=$coin_name-$dup_count service\
-		\nAfter=network.target\
-		\n\
-		\n[Service]\
-		\nUser=root\
-		\nGroup=root\
-		\nType=forking\
-		\nExecStart=$coin_path$coin_daemon -daemon -conf=$coin_folder$dup_count/$coin_config -datadir=$coin_folder$dup_count\
-		\nExecStop=$coin_path$coin_cli -conf=$coin_folder$dup_count/$coin_config -datadir=$coin_folder$dup_count stop\
-		\nRestart=always\
-		\nPrivateTmp=true\
-		\nTimeoutStopSec=60s\
-		\nTimeoutStartSec=10s\
-		\nStartLimitInterval=120s\
-		\nStartLimitBurst=5\
-		\n\
-		\n[Install]\
-		\nWantedBy=multi-user.target" > /etc/systemd/system/$coin_name-$dup_count.service
-		chmod +x /etc/systemd/system/$coin_name-$dup_count.service
+	# <$1 = instance_number>
 
-		systemctl daemon-reload
-		sleep 3
-		systemctl start $coin_name-$dup_count.service
-		systemctl enable $coin_name-$dup_count.service > /dev/null 2>&1
+	echo -e "[Unit]\
+	\nDescription=$coin_name-$1 service\
+	\nAfter=network.target\
+	\n\
+	\n[Service]\
+	\nUser=root\
+	\nGroup=root\
+	\nType=forking\
+	\nExecStart=$coin_path$coin_daemon -daemon -conf=$coin_folder$1/$coin_config -datadir=$coin_folder$1\
+	\nExecStop=$coin_path$coin_cli -conf=$coin_folder$1/$coin_config -datadir=$coin_folder$1 stop\
+	\nRestart=always\
+	\nPrivateTmp=true\
+	\nTimeoutStopSec=60s\
+	\nTimeoutStartSec=10s\
+	\nStartLimitInterval=120s\
+	\nStartLimitBurst=5\
+	\n\
+	\n[Install]\
+	\nWantedBy=multi-user.target" > /etc/systemd/system/$coin_name-$1.service
+	chmod +x /etc/systemd/system/$coin_name-$1.service
 
-		if [[ -z "$(ps axo cmd:100 | egrep $coin_name-$dup_count)" ]]; then
-			echo -e "\n${RED}IMPORTANT!!!${NC} \
-				\nSeems like there might be a problem with the systemctl configuration, please investigate.\
-				\nYou should start by running the following commands:\
-				\n${GREEN}systemctl start  $coin_name-$2.service${NC}\
-				\n${GREEN}systemctl status $coin_name-$2.service${NC}\
-				\n${GREEN}less /var/log/syslog${NC}\
-				\nThe most common causes of this might be that either you made something to a file that dupmn modifies or creates, or that you don't have enough free resources (usually memory).
-				\nThere's also the chance that this could be a false positive error (so actually everything is ok), anyway please use the commands above to investigate."
-		fi
+	systemctl daemon-reload
+	sleep 3
+	systemctl start $coin_name-$1.service
+	systemctl enable $coin_name-$1.service > /dev/null 2>&1
+
+	if [[ -z "$(ps axo cmd:100 | egrep $coin_name-$1)" ]]; then
+		echo -e "\n${RED}IMPORTANT!!!${NC} \
+			\nSeems like there might be a problem with the systemctl configuration, please investigate.\
+			\nYou should start by running the following commands:\
+			\n${GREEN}systemctl start  $coin_name-$2.service${NC}\
+			\n${GREEN}systemctl status $coin_name-$2.service${NC}\
+			\n${GREEN}less /var/log/syslog${NC}\
+			\nThe most common causes of this might be that either you made something to a file that dupmn modifies or creates, or that you don't have enough free resources (usually memory).
+			\nThere's also the chance that this could be a false positive error (so actually everything is ok), anyway please use the commands above to investigate."
+	fi
+}
+function wallet_status() {
+	exec 2> /dev/null
+	[[ $($coin_cli getblockcount) =~ ^[0-9]+$ ]] && echo "1" || echo "0"
+	exec 2> /dev/tty
+}
+function wait_wallet_status() {
+	# <$1 = 1/0 (on/off)>
+
+	while [[ $(wallet_status) != "$1" ]]; do
+		sleep 1
+	done
 }
 function install_proc() {
-	# <$1 = profile_name>
+	# <$1 = profile_name> | <$2 = instance_number> | [$3 = copy]
 
 	if [ ! -d "$coin_folder" ]; then
 		echo -e "$coin_folder folder can't be found, $coin_name is not installed in the system or the given profile has a wrong parameter"
@@ -139,18 +153,33 @@ function install_proc() {
 		exit
 	fi
 
-	new_key=$($coin_cli masternode genkey)
-	new_rpc=$(find_port $(($(grep -Po '(?<=RPC_PORT=).*' .dupmn/$1 || grep -Po '(?<=rpcport=).*' $coin_folder/$coin_config || echo -e "1023")+1)) $1)
+	new_folder="$coin_folder$2"
 
-	dup_count=$(($dup_count+1))
-	new_folder="$coin_folder$dup_count"
+	if [[ "$3" == "copy" ]]; then
+		if [[ $(wallet_status) == "1" ]]; then
+			echo -e "Main masternode must be stopped to copy the chain on install, use ${GREEN}$coin_cli stop${NC} to stop the main node\nNOTE: Some main nodes may need to stop a systemctl service instead"
+			exit
+		fi
+		echo "Copying main node chain... (may take a while)"
+		rm -rf $new_folder
+		cp -r $coin_folder $new_folder
+		rm -rf $new_folder/$coin_config
+		rm -rf $new_folder/wallet.dat
+		$coin_daemon -daemon > /dev/null 2>&1
+		wait_wallet_status "1"
+	fi
 
-	if [[ ! $new_key =~ ^[a-zA-Z0-9]+$ ]]; then
+	if [[ $(wallet_status) == "0" ]]; then
 		echo -e "Main masternode must be running to create a duplicate masternode, use ${GREEN}$coin_daemon -daemon${NC} to start the main masternode"
 		exit
 	fi
 
-	mkdir $new_folder
+	new_key=$($coin_cli masternode genkey)
+	new_rpc=$(find_port $(($(grep -Po '(?<=RPC_PORT=).*' .dupmn/$1 || grep -Po '(?<=rpcport=).*' $coin_folder/$coin_config || echo -e "1023")+1)) $1)
+
+	[[ "$3" == "copy" ]] && $coin_cli stop > /dev/null 2>&1
+
+	mkdir $new_folder > /dev/null 2>&1
 	cp $coin_folder/$coin_config $new_folder
 
 	$(conf_set_value $new_folder/$coin_config "rpcport"           $new_rpc 1)
@@ -159,26 +188,26 @@ function install_proc() {
 
 	echo -e "#!/bin/bash\n$coin_cli \$@"    > /usr/bin/$coin_cli-0
 	echo -e "#!/bin/bash\n$coin_daemon \$@" > /usr/bin/$coin_daemon-0
-	echo -e "#!/bin/bash\n$coin_cli -datadir=$new_folder \$@"    > /usr/bin/$coin_cli-$dup_count
-	echo -e "#!/bin/bash\n$coin_daemon -datadir=$new_folder \$@" > /usr/bin/$coin_daemon-$dup_count
-	echo -e "#!/bin/bash\nfor (( i=0; i<=$dup_count; i++ )) do\n echo -e MN\$i:\n $coin_cli-\$i \$@\ndone"    > /usr/bin/$coin_cli-all
-	echo -e "#!/bin/bash\nfor (( i=0; i<=$dup_count; i++ )) do\n echo -e MN\$i:\n $coin_daemon-\$i \$@\ndone" > /usr/bin/$coin_daemon-all
+	echo -e "#!/bin/bash\n$coin_cli -datadir=$new_folder \$@"    > /usr/bin/$coin_cli-$2
+	echo -e "#!/bin/bash\n$coin_daemon -datadir=$new_folder \$@" > /usr/bin/$coin_daemon-$2
+	echo -e "#!/bin/bash\nfor (( i=0; i<=$2; i++ )) do\n echo -e MN\$i:\n $coin_cli-\$i \$@\ndone"    > /usr/bin/$coin_cli-all
+	echo -e "#!/bin/bash\nfor (( i=0; i<=$2; i++ )) do\n echo -e MN\$i:\n $coin_daemon-\$i \$@\ndone" > /usr/bin/$coin_daemon-all
 	chmod +x /usr/bin/$coin_cli-0
 	chmod +x /usr/bin/$coin_daemon-0
-	chmod +x /usr/bin/$coin_cli-$dup_count
-	chmod +x /usr/bin/$coin_daemon-$dup_count
+	chmod +x /usr/bin/$coin_cli-$2
+	chmod +x /usr/bin/$coin_daemon-$2
 	chmod +x /usr/bin/$coin_cli-all
 	chmod +x /usr/bin/$coin_daemon-all
 
-	$(conf_set_value .dupmn/dupmn.conf $1 $dup_count)
+	$(conf_set_value .dupmn/dupmn.conf $1 $2)
 }
 function conf_set_value() {
 	# <$1 = conf_file> | <$2 = key> | <$3 = value> | [$4 = force_create]
-	(grep -Poq "(?<=$2=).*" $1 && sed -i "/^$2=/s/=.*/=$3/" $1) || ([[ $4 == "1" ]] && echo -e "$2=$3" >> $1)
+	[[ $(grep -ws "^$2" "$1" | cut -d "=" -f1) == "$2" ]] && sed -i "/^$2=/s/=.*/=$3/" "$1" || ([[ "$4" == "1" ]] && echo -e "$2=$3" >> $1)
 }
 function conf_get_value() {
 	# <$1 = conf_file> | <$2 = key>
-	grep -w "^$2" "$1" | cut -d "=" -f2
+	grep -ws "^$2" "$1" | cut -d "=" -f2
 }
 function get_ips() {
 	# <$1 = 4 or 6>
@@ -262,47 +291,50 @@ function cmd_profdel() {
 	rm -rf .dupmn/$1
 }
 function cmd_install() {
-	# <$1 = profile_name>
+	# <$1 = profile_name> | <$2 = instance_number> | [$3 = copy]
 
-	install_proc $1
-	configure_systemd
+	install_proc $1 $2 $3
+	configure_systemd $2
 
 	echo -e "===================================================================================================\
-			\n${BLUE}$coin_name${NC} duplicated masternode ${CYAN}number $dup_count${NC} should be now up and trying to sync with the blockchain.\
+			\n${BLUE}$coin_name${NC} duplicated masternode ${CYAN}number $2${NC} should be now up and trying to sync with the blockchain.\
 			\nThe duplicated masternode uses the same IP and PORT than the original one.\
-			\nRPC port is ${MAGENTA}$new_rpc${NC}, this one is used to send commands to the wallet, DON'T put it in 'masternode.conf' (other programs might want to use this port which causes a conflict, but you can change it with ${MAGENTA}dupmn rpcchange $1 $dup_count PORT_NUMBER${NC}).\
-			\nStart:              ${RED}systemctl start   $coin_name-$dup_count.service${NC}\
-			\nStop:               ${RED}systemctl stop    $coin_name-$dup_count.service${NC}\
-			\nStart on reboot:    ${RED}systemctl enable  $coin_name-$dup_count.service${NC}\
-			\nNo start on reboot: ${RED}systemctl disable $coin_name-$dup_count.service${NC}\
+			\nRPC port is ${MAGENTA}$new_rpc${NC}, this one is used to send commands to the wallet, DON'T put it in 'masternode.conf' (other programs might want to use this port which causes a conflict, but you can change it with ${MAGENTA}dupmn rpcchange $1 $2 PORT_NUMBER${NC}).\
+			\nStart:              ${RED}systemctl start   $coin_name-$2.service${NC}\
+			\nStop:               ${RED}systemctl stop    $coin_name-$2.service${NC}\
+			\nStart on reboot:    ${RED}systemctl enable  $coin_name-$2.service${NC}\
+			\nNo start on reboot: ${RED}systemctl disable $coin_name-$2.service${NC}\
 			\n(Currently configured to start on reboot)\
 			\nDUPLICATED MASTERNODE PRIVATEKEY is: ${GREEN}$new_key${NC}\
-			\nTo check the masternode status just use: ${GREEN}$coin_cli-$dup_count masternode status${NC} (Wait until the new masternode is synced with the blockchain before trying to start it).\
+			\nTo check the masternode status just use: ${GREEN}$coin_cli-$2 masternode status${NC} (Wait until the new masternode is synced with the blockchain before trying to start it).\
 			\nNOTE 1: ${GREEN}$coin_cli-0${NC} and ${GREEN}$coin_daemon-0${NC} are just a reference to the 'main masternode', not a created one with dupmn.\
 			\nNOTE 2: You can use ${GREEN}$coin_cli-all [parameters]${NC} and ${GREEN}$coin_daemon-all [parameters]${NC} to apply the parameters on all masternodes. Example: ${GREEN}$coin_cli-all masternode status${NC}\
 			\n==================================================================================================="
+	[[ "$3" == "copy" ]] && echo -e "\nYou can now start again the main node\n"
 }
 function cmd_reinstall() {
-	# <$1 = profile_name> | <$2 = instance_number>
+	# <$1 = profile_name> | <$2 = instance_number> | [$3 = ipinstall_ip]
 
-	if [[ ! $($coin_cli getblockcount) =~ ^[0-9]+$ ]]; then
-		echo -e "Main masternode must be running to create a duplicate masternode, use ${GREEN}$coin_daemon -daemon${NC} to start the main masternode"
+	if [[ $(wallet_status) == "0" ]]; then
+		echo -e "Main masternode must be running to reinstall a duplicate masternode, use ${GREEN}$coin_daemon -daemon${NC} to start the main masternode"
 		exit
 	fi
 
 	systemctl stop $coin_name-$(($2)).service
 	rm -rf $coin_folder$(($2))
 
-	local tmp_dup_count=$dup_count
-	dup_count=$(($2-1))
-	cmd_install $1
+	if [[ -z "$3" ]]; then
+		cmd_install $1 $2
+	else
+		cmd_ipinstall $1 $2 $3
+	fi
 
-	echo -e "#!/bin/bash\nfor (( i=0; i<=$tmp_dup_count; i++ )) do\n echo -e MN\$i:\n $coin_cli-\$i \$@\ndone"    > /usr/bin/$coin_cli-all
-	echo -e "#!/bin/bash\nfor (( i=0; i<=$tmp_dup_count; i++ )) do\n echo -e MN\$i:\n $coin_daemon-\$i \$@\ndone" > /usr/bin/$coin_daemon-all
+	echo -e "#!/bin/bash\nfor (( i=0; i<=$dup_count; i++ )) do\n echo -e MN\$i:\n $coin_cli-\$i \$@\ndone"    > /usr/bin/$coin_cli-all
+	echo -e "#!/bin/bash\nfor (( i=0; i<=$dup_count; i++ )) do\n echo -e MN\$i:\n $coin_daemon-\$i \$@\ndone" > /usr/bin/$coin_daemon-all
 	chmod +x /usr/bin/$coin_cli-all
 	chmod +x /usr/bin/$coin_daemon-all
 
-	$(conf_set_value .dupmn/dupmn.conf $1 $tmp_dup_count)
+	$(conf_set_value .dupmn/dupmn.conf $1 $dup_count)
 }
 function cmd_uninstall() {
 	# <$1 = profile_name> | <$2 = instance_number/all>
@@ -319,7 +351,6 @@ function cmd_uninstall() {
 			rm -rf /usr/bin/$coin_daemon-$i
 			systemctl stop $coin_name-$i.service > /dev/null
 			systemctl disable $coin_name-$i.service > /dev/null 2>&1
-			sleep 3
 			rm -rf /etc/systemd/system/$coin_name-$i.service
 			rm -rf $coin_folder$i
 		done
@@ -339,7 +370,6 @@ function cmd_uninstall() {
 		echo -e "#!/bin/bash\nfor (( i=0; i<=$(($dup_count-1)); i++ )) do\n echo -e MN\$i:\n $coin_daemon-\$i \$@\ndone" > /usr/bin/$coin_daemon-all
 		chmod +x /usr/bin/$coin_cli-all
 		chmod +x /usr/bin/$coin_daemon-all
-		sleep 3
 		rm -rf $coin_folder$(($2))
 
 		for (( i=$2; i<=$dup_count; i++ )); do
@@ -348,18 +378,16 @@ function cmd_uninstall() {
 		for (( i=$2+1; i<=$dup_count; i++ )); do
 			echo -e "setting ${CYAN}instance $i${NC} as ${CYAN}instance $(($i-1))${NC}..."
 			mv $coin_folder$i $coin_folder$(($i-1))
-			sleep 1
 			systemctl start $coin_name-$(($i-1)).service
 		done
 
 		systemctl disable $coin_name-$dup_count.service > /dev/null 2>&1
-		sleep 3
 		rm -rf /etc/systemd/system/$coin_name-$dup_count.service
 		systemctl daemon-reload
 	fi
 }
 function cmd_ipinstall() {
-	# <$1 = profile_name> | <$2 = ip>
+	# <$1 = profile_name> | <$2 = instance_number>
 
 	echo -e "!!! This command stills in beta state !!!"
 
@@ -367,7 +395,7 @@ function cmd_ipinstall() {
 	# local netstat_list=$(netstat -Wlantp | grep LISTEN | grep $coin_daemon)
 	# for each IP => echo netstat_list | grep $ip_from_list
 
-	install_proc $1
+	install_proc $1 $2
 
 	local mn_addr_port=$(echo $(conf_get_value $new_folder/$coin_config "masternodeaddr") | rev | cut -d ":" -f1 | rev) 
 	mn_addr_port=$([[ "$mn_addr_port" =~ ^[0-9]+$ ]] && echo ":$mn_addr_port" || echo "")
@@ -382,51 +410,27 @@ function cmd_ipinstall() {
 		local main_ip=$(conf_get_value $coin_folder/$coin_config "externalip")
 		main_ip=$([[ -z "$main_ip" ]] && echo $(conf_get_value $new_folder/$coin_config "masternodeaddr") || echo "$main_ip")
 		$(conf_set_value $coin_folder/$coin_config "bind"      $main_ip         1)
-		$coin_cli stop
+		$coin_cli stop > /dev/null 2>&1
 		sleep 5
-		$coin_daemon -daemon
+		$coin_daemon -daemon > /dev/null 2>&1
 	fi
 
-	configure_systemd
+	configure_systemd $2
 
 	echo -e "===================================================================================================\
-			\n${BLUE}$coin_name${NC} duplicated masternode ${CYAN}number $dup_count${NC} should be now up and trying to sync with the blockchain.\
+			\n${BLUE}$coin_name${NC} duplicated masternode ${CYAN}number $2${NC} should be now up and trying to sync with the blockchain.\
 			\nThe duplicated masternode uses the IP ${YELLOW}$ip${NC} and the same PORT than the original one.\
-			\nRPC port is ${MAGENTA}$new_rpc${NC}, this one is used to send commands to the wallet, DON'T put it in 'masternode.conf' (other programs might want to use this port which causes a conflict, but you can change it with ${MAGENTA}dupmn rpcchange $1 $dup_count PORT_NUMBER${NC}).\
-			\nStart:              ${RED}systemctl start   $coin_name-$dup_count.service${NC}\
-			\nStop:               ${RED}systemctl stop    $coin_name-$dup_count.service${NC}\
-			\nStart on reboot:    ${RED}systemctl enable  $coin_name-$dup_count.service${NC}\
-			\nNo start on reboot: ${RED}systemctl disable $coin_name-$dup_count.service${NC}\
+			\nRPC port is ${MAGENTA}$new_rpc${NC}, this one is used to send commands to the wallet, DON'T put it in 'masternode.conf' (other programs might want to use this port which causes a conflict, but you can change it with ${MAGENTA}dupmn rpcchange $1 $2 PORT_NUMBER${NC}).\
+			\nStart:              ${RED}systemctl start   $coin_name-$2.service${NC}\
+			\nStop:               ${RED}systemctl stop    $coin_name-$2.service${NC}\
+			\nStart on reboot:    ${RED}systemctl enable  $coin_name-$2.service${NC}\
+			\nNo start on reboot: ${RED}systemctl disable $coin_name-$2.service${NC}\
 			\n(Currently configured to start on reboot)\
 			\nDUPLICATED MASTERNODE PRIVATEKEY is: ${GREEN}$new_key${NC}\
-			\nTo check the masternode status just use: ${GREEN}$coin_cli-$dup_count masternode status${NC} (Wait until the new masternode is synced with the blockchain before trying to start it).\
+			\nTo check the masternode status just use: ${GREEN}$coin_cli-$2 masternode status${NC} (Wait until the new masternode is synced with the blockchain before trying to start it).\
 			\nNOTE 1: ${GREEN}$coin_cli-0${NC} and ${GREEN}$coin_daemon-0${NC} are just a reference to the 'main masternode', not a created one with dupmn.\
 			\nNOTE 2: You can use ${GREEN}$coin_cli-all [parameters]${NC} and ${GREEN}$coin_daemon-all [parameters]${NC} to apply the parameters on all masternodes. Example: ${GREEN}$coin_cli-all masternode status${NC}\
 			\n==================================================================================================="
-}
-function cmd_ipreinstall() {
-	# <$1 = profile_name> | <$2 = instance_number> | <$3 = ip>
-
-	echo -e "!!! This command stills in beta state !!!"
-
-	if [[ ! $($coin_cli getblockcount) =~ ^[0-9]+$ ]]; then
-		echo -e "Main masternode must be running to create a duplicate masternode, use ${GREEN}$coin_daemon -daemon${NC} to start the main masternode"
-		exit
-	fi
-
-	systemctl stop $coin_name-$(($2)).service
-	rm -rf $coin_folder$(($2))
-
-	local tmp_dup_count=$dup_count
-	dup_count=$(($2-1))
-	cmd_ipinstall $1 $ip
-
-	echo -e "#!/bin/bash\nfor (( i=0; i<=$tmp_dup_count; i++ )) do\n echo -e MN\$i:\n $coin_cli-\$i \$@\ndone"    > /usr/bin/$coin_cli-all
-	echo -e "#!/bin/bash\nfor (( i=0; i<=$tmp_dup_count; i++ )) do\n echo -e MN\$i:\n $coin_daemon-\$i \$@\ndone" > /usr/bin/$coin_daemon-all
-	chmod +x /usr/bin/$coin_cli-all
-	chmod +x /usr/bin/$coin_daemon-all
-
-	$(conf_set_value .dupmn/dupmn.conf $1 $tmp_dup_count)
 }
 function cmd_iplist() {
 	echo -e "${GREEN}IPv4:${NC}"
@@ -553,7 +557,7 @@ function cmd_help() {
 	echo -e "Options:\
 			\n  - ${YELLOW}dupmn profadd <prof_file> <prof_name>       ${NC}Adds a profile with the given name that will be used to create duplicates of the masternode\
 			\n  - ${YELLOW}dupmn profdel <prof_name>                   ${NC}Deletes the given profile name, this will uninstall too any duplicated instance that uses this profile\
-			\n  - ${YELLOW}dupmn install <prof_name>                   ${NC}Install a new instance based on the parameters of the given profile name\
+			\n  - ${YELLOW}dupmn install <prof_name> [copy]            ${NC}Install a new instance based on the parameters of the given profile name, you can put ${YELLOW}copy${NC} as an extra parameter to copy the chain from the main node\
 			\n  - ${YELLOW}dupmn reinstall <prof_name> <number>        ${NC}Reinstalls the specified instance, this is just in case if the instance is giving problems\
 			\n  - ${YELLOW}dupmn uninstall <prof_name> <number>        ${NC}Uninstall the specified instance of the given profile name, you can put ${YELLOW}all${NC} instead of a number to uninstall all the duplicated instances\
 			\n  - ${YELLOW}dupmn iplist                                ${NC}Shows all your configurated IPv4 and IPv6\
@@ -561,6 +565,7 @@ function cmd_help() {
 			\n  - ${YELLOW}dupmn systemctlall <prof_name> <command>    ${NC}Applies the systemctl command to all the duplicated instances of the given profile name (but not the main instance)\
 			\n  - ${YELLOW}dupmn list [prof_name]                      ${NC}Shows the amount of duplicated instances of every masternode, if a profile name is provided, it lists an extended info of the profile instances\
 			\n  - ${YELLOW}dupmn swapfile <size_in_mbytes>             ${NC}Creates, changes or deletes (if parameter is 0) a swapfile of the given size in MB to increase the virtual memory\
+			\n  - ${YELLOW}dupmn about                                 ${NC}Shows some info about the script\
 			\n${RED}BETA Options:${NC}\
 			\n  - ${YELLOW}dupmn ipinstall <prof_name> <ip>            ${NC}Install a new instance based on the parameters of the given profile name that will ue the given IP\
 			\n  - ${YELLOW}dupmn ipreinstall <prof_name> <number> <ip> ${NC}Reinstalls the specified instance with the given IP, this is just in case if the instance is giving problems\
@@ -710,7 +715,7 @@ function main() {
 				exit
 			fi
 			load_profile "$2"
-			cmd_install "$2"
+			cmd_install "$2" $(($dup_count+1)) "$3"
 			;;
 		"reinstall")
 			if [[ -z "$3" ]]; then
@@ -739,7 +744,7 @@ function main() {
 			fi
 			load_profile "$2"
 			ip_valid "$3"
-			cmd_ipinstall "$2" "$3"
+			cmd_ipinstall "$2" $(($dup_count+1))
 			;;
 		"ipreinstall")
 			if [[ -z "$4" ]]; then
