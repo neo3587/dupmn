@@ -4,7 +4,6 @@
 # Source: https://github.com/neo3587/dupmn
 
 # TODO:
-# - dupmn reinstall <prof_name> <instance> [copy] => main MN must be stopped and manually started after
 # - check ipinstall ip is same than other dupes and main MN, if true => listen = 0 and advertise
 # - dupmn ipadd <ip> <netmask> <inc> # may require hard reset
 # - dupmn ipdel <ip> # not main one
@@ -60,7 +59,7 @@ function port_check() {
 	fi
 }
 function find_port() {
-	# <$1 = initial_check | $2 = profile_name>
+	# <$1 = initial_check>
 
 	function port_check_loop() {
 		for (( i=$1; i<=$2; i++ )); do
@@ -72,7 +71,7 @@ function find_port() {
 	}
 
 	local dup_ports=""
-	for (( i=1; i<=$(conf_get_value .dupmn/dupmn.conf $2); i++ )); do
+	for (( i=1; i<=$dup_count; i++ )); do
 		dup_ports="$dup_ports $(conf_get_value $coin_folder$i/$coin_config rpcport) "
 	done
 	local port=$(port_check_loop $1 49151 "( $dup_ports )")
@@ -175,7 +174,7 @@ function install_proc() {
 	fi
 
 	new_key=$($coin_cli masternode genkey)
-	new_rpc=$(find_port $(($(grep -Po '(?<=RPC_PORT=).*' .dupmn/$1 || grep -Po '(?<=rpcport=).*' $coin_folder/$coin_config || echo -e "1023")+1)) $1)
+	new_rpc=$(find_port $(($(grep -Po '(?<=RPC_PORT=).*' .dupmn/$1 || grep -Po '(?<=rpcport=).*' $coin_folder/$coin_config || echo -e "1023")+1)))
 
 	[[ "$3" == "copy" ]] && $coin_cli stop > /dev/null 2>&1
 
@@ -313,20 +312,23 @@ function cmd_install() {
 	[[ "$3" == "copy" ]] && echo -e "\nYou can now start again the main node\n"
 }
 function cmd_reinstall() {
-	# <$1 = profile_name> | <$2 = instance_number> | [$3 = ipinstall_ip]
+	# <$1 = profile_name> | <$2 = instance_number> | <$3 = use_ipinstall> | [$4 = copy]
 
-	if [[ $(wallet_status) == "0" ]]; then
+	if [[ "$4" != "copy" && $(wallet_status) == "0" ]]; then
 		echo -e "Main masternode must be running to reinstall a duplicate masternode, use ${GREEN}$coin_daemon -daemon${NC} to start the main masternode"
+		exit
+	elif [[ "$4" == "copy" && $(wallet_status) == "1" ]]; then 
+		echo -e "Main masternode must be stopped to copy the chain on reinstall, use ${GREEN}$coin_cli stop${NC} to stop the main node\nNOTE: Some main nodes may need to stop a systemctl service instead"
 		exit
 	fi
 
 	systemctl stop $coin_name-$(($2)).service
 	rm -rf $coin_folder$(($2))
 
-	if [[ -z "$3" ]]; then
-		cmd_install $1 $2
+	if [[ "$3" == "0" ]]; then
+		cmd_install $1 $2 $4
 	else
-		cmd_ipinstall $1 $2 $3
+		cmd_ipinstall $1 $2
 	fi
 
 	echo -e "#!/bin/bash\nfor (( i=0; i<=$dup_count; i++ )) do\n echo -e MN\$i:\n $coin_cli-\$i \$@\ndone"    > /usr/bin/$coin_cli-all
@@ -449,7 +451,7 @@ function cmd_rpcchange() {
 
 	if [[ -z "$3" ]]; then
 		echo -e "No port provided, the port will be changed for any other free port..."
-		new_port=$(find_port $new_port $1)
+		new_port=$(find_port $new_port)
 	elif [[ ! $(is_number $3) ]]; then
 		echo -e "${YELLOW}dupmn rpcchange <prof_name> <number> [port]${NC}, [port] must be a number"
 		exit
@@ -714,7 +716,7 @@ function main() {
 			;;
 		"install")
 			if [[ -z "$2" ]]; then
-				echo -e "${YELLOW}dupmn install <coin_name>${NC} requires a profile name of an added profile as a parameter"
+				echo -e "${YELLOW}dupmn install <coin_name> [copy]${NC} requires a profile name of an added profile as a parameter"
 				exit
 			fi
 			load_profile "$2"
@@ -722,12 +724,12 @@ function main() {
 			;;
 		"reinstall")
 			if [[ -z "$3" ]]; then
-				echo -e "${YELLOW}dupmn reinstall <coin_name> <number>${NC} requires a profile name and a instance as parameters"
+				echo -e "${YELLOW}dupmn reinstall <coin_name> <number> [copy]${NC} requires a profile name and a instance as parameters"
 				exit
 			fi
 			load_profile "$2"
 			instance_valid "$2" "$3"
-			cmd_reinstall "$2" "$3"
+			cmd_reinstall "$2" "$3" "0" "$4"
 			;;
 		"uninstall")
 			if [[ -z "$3" ]]; then
@@ -757,7 +759,7 @@ function main() {
 			load_profile "$2"
 			instance_valid "$2" "$3"
 			ip_valid "$4"
-			cmd_reinstall "$2" "$3" "$4"
+			cmd_reinstall "$2" "$3" "1"
 			;;
 		"iplist")
 			cmd_iplist
