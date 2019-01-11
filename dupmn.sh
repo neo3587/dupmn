@@ -494,13 +494,16 @@ function cmd_list() {
 			done
 		fi
 	else
+		function print_dup_info() {
+			local dup_ip=$(conf_get_value $coin_folder$1/$coin_config "masternodeaddr")
+			echo -e  "  ip      : ${YELLOW}$([[ -z "$dup_ip" ]] && echo $(conf_get_value $coin_folder$1/$coin_config "externalip") || echo "$dup_ip")${NC}\
+					\n  rpcport : ${MAGENTA}$(conf_get_value $coin_folder$1/$coin_config rpcport)${NC}\
+					\n  privkey : ${GREEN}$(conf_get_value $coin_folder$1/$coin_config masternodeprivkey)${NC}"
+		}
 		echo -e "${BLUE}$1${NC}: ${CYAN}$dup_count${NC} created nodes with dupmn"
+		echo -e "Main Node:\n$(print_dup_info)"
 		for (( i=1; i<=$dup_count; i++ )); do
-			local dup_ip=$(conf_get_value $coin_folder$i/$coin_config "masternodeaddr")
-			echo -e "MN$i:\
-					\n  ip      : ${YELLOW}$([[ -z "$dup_ip" ]] && echo $(conf_get_value $coin_folder$i/$coin_config "externalip") || echo "$dup_ip")${NC}\
-					\n  rpcport : ${MAGENTA}$(conf_get_value $coin_folder$i/$coin_config rpcport)${NC}\
-					\n  privkey : ${GREEN}$(conf_get_value $coin_folder$i/$coin_config masternodeprivkey)${NC}"
+			echo -e "MN$i:\n$(print_dup_info $i)"
 		done
 	fi
 }
