@@ -17,7 +17,7 @@ echo -e "\n===================================================\
 		\n                                ╗ made by neo3587 ╔\
 		\n           Source: ${CYAN}https://github.com/neo3587/dupmn${NC}\
 		\n   FAQs: ${CYAN}https://github.com/neo3587/dupmn/wiki/FAQs${NC}\
-		\n  BTC Donations: ${YELLOW}3HE1kwgHEWvxBa38NHuQbQQrhNZ9wxjhe7${NC}\
+		\n  BTC Donations: ${YELLOW}3F6J19DmD5jowwwQbE9zxXoguGPVR716a7${NC}\
 		\n===================================================\
 		\n                                                   "
 

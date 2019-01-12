@@ -40,8 +40,8 @@ Then you can remove the installer script if you want: `rm -rf dupmn_install.sh` 
 
 Commands in beta state:
 
-- `dupmn ipinstall <prof_name> <ip>` : Install a new instance based on the parameters of the given profile name that will use the given IP.
-- `dupmn ipreinstall <prof_name> <number> <ip>` : Reinstalls the specified instance with the given IP, this is just in case if the instance is giving problems.
+- `dupmn ipinstall <prof_name> <ip> [copy]` : Install a new instance based on the parameters of the given profile name that will use the given IP, you can put `copy` as an extra parameter to copy the chain from the main node.
+- `dupmn ipreinstall <prof_name> <number> <ip> [copy]` : Reinstalls the specified instance with the given IP, this is just in case if the instance is giving problems, you can put `copy` as an extra parameter to copy the chain from the main node.
 
 Note: `<parameter>` means required, `[parameter]` means optional.
 
@@ -117,7 +117,7 @@ A VPS doesn't have unlimited resources, creating too many instances may cause Ou
 # <a name ="additional"></a> Additional
 
 ```
-BTC Donations:   3HE1kwgHEWvxBa38NHuQbQQrhNZ9wxjhe7
+BTC Donations:   3F6J19DmD5jowwwQbE9zxXoguGPVR716a7
 BCARD Donations: BQmTwK685ajop8CFY6bWVeM59rXgqZCTJb
 SNO Donations:   SZ4pQpuqq11EG7dw6qjgqSs5tGq3iTw2uZ
 CFL Donations:   c4fuTdr7Z7wZy8WQULmuAdfPDReWfDcoE5

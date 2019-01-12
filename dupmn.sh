@@ -328,7 +328,7 @@ function cmd_reinstall() {
 	if [[ "$3" == "0" ]]; then
 		cmd_install $1 $2 $4
 	else
-		cmd_ipinstall $1 $2
+		cmd_ipinstall $1 $2 $4
 	fi
 
 	echo -e "#!/bin/bash\nfor (( i=0; i<=$dup_count; i++ )) do\n echo -e MN\$i:\n $coin_cli-\$i \$@\ndone"    > /usr/bin/$coin_cli-all
@@ -389,7 +389,7 @@ function cmd_uninstall() {
 	fi
 }
 function cmd_ipinstall() {
-	# <$1 = profile_name> | <$2 = instance_number>
+	# <$1 = profile_name> | <$2 = instance_number> | [$3 = copy]
 
 	echo -e "!!! This command stills in beta state !!!"
 
@@ -397,7 +397,7 @@ function cmd_ipinstall() {
 	# local netstat_list=$(netstat -Wlantp | grep LISTEN | grep $coin_daemon)
 	# for each IP => echo netstat_list | grep $ip_from_list
 
-	install_proc $1 $2
+	install_proc $1 $2 $3
 
 	local mn_addr_port=$(echo $(conf_get_value $new_folder/$coin_config "masternodeaddr") | rev | cut -d ":" -f1 | rev) 
 	mn_addr_port=$([[ "$mn_addr_port" =~ ^[0-9]+$ ]] && echo ":$mn_addr_port" || echo "")
@@ -433,6 +433,7 @@ function cmd_ipinstall() {
 			\nNOTE 1: ${GREEN}$coin_cli-0${NC} and ${GREEN}$coin_daemon-0${NC} are just a reference to the 'main masternode', not a created one with dupmn.\
 			\nNOTE 2: You can use ${GREEN}$coin_cli-all [parameters]${NC} and ${GREEN}$coin_daemon-all [parameters]${NC} to apply the parameters on all masternodes. Example: ${GREEN}$coin_cli-all masternode status${NC}\
 			\n==================================================================================================="
+	[[ "$3" == "copy" ]] && echo -e "\nYou can now start again the main node\n"
 }
 function cmd_iplist() {
 	echo -e "${GREEN}IPv4:${NC}"
@@ -560,20 +561,20 @@ function cmd_swapfile() {
 }
 function cmd_help() {
 	echo -e "Options:\
-			\n  - ${YELLOW}dupmn profadd <prof_file> <prof_name>       ${NC}Adds a profile with the given name that will be used to create duplicates of the masternode\
-			\n  - ${YELLOW}dupmn profdel <prof_name>                   ${NC}Deletes the given profile name, this will uninstall too any duplicated instance that uses this profile\
-			\n  - ${YELLOW}dupmn install <prof_name> [copy]            ${NC}Install a new instance based on the parameters of the given profile name, you can put ${YELLOW}copy${NC} as an extra parameter to copy the chain from the main node\
-			\n  - ${YELLOW}dupmn reinstall <prof_name> <number>        ${NC}Reinstalls the specified instance, this is just in case if the instance is giving problems\
-			\n  - ${YELLOW}dupmn uninstall <prof_name> <number>        ${NC}Uninstall the specified instance of the given profile name, you can put ${YELLOW}all${NC} instead of a number to uninstall all the duplicated instances\
-			\n  - ${YELLOW}dupmn iplist                                ${NC}Shows all your configurated IPv4 and IPv6\
-			\n  - ${YELLOW}dupmn rpcchange <prof_name> <number> [port] ${NC}Changes the RPC port used from the given number instance with the new one (or finds a new one by itself if no port is given)\
-			\n  - ${YELLOW}dupmn systemctlall <prof_name> <command>    ${NC}Applies the systemctl command to all the duplicated instances of the given profile name (but not the main instance)\
-			\n  - ${YELLOW}dupmn list [prof_name]                      ${NC}Shows the amount of duplicated instances of every masternode, if a profile name is provided, it lists an extended info of the profile instances\
-			\n  - ${YELLOW}dupmn swapfile <size_in_mbytes>             ${NC}Creates, changes or deletes (if parameter is 0) a swapfile of the given size in MB to increase the virtual memory\
-			\n  - ${YELLOW}dupmn about                                 ${NC}Shows some info about the script\
+			\n  - ${YELLOW}dupmn profadd <prof_file> <prof_name>              ${NC}Adds a profile with the given name that will be used to create duplicates of the masternode\
+			\n  - ${YELLOW}dupmn profdel <prof_name>                          ${NC}Deletes the given profile name, this will uninstall too any duplicated instance that uses this profile\
+			\n  - ${YELLOW}dupmn install <prof_name> [copy]                   ${NC}Install a new instance based on the parameters of the given profile name, you can put ${YELLOW}copy${NC} as an extra parameter to copy the chain from the main node\
+			\n  - ${YELLOW}dupmn reinstall <prof_name> <number> [copy]        ${NC}Reinstalls the specified instance, this is just in case if the instance is giving problems, you can put ${YELLOW}copy${NC} as an extra parameter to copy the chain from the main node\
+			\n  - ${YELLOW}dupmn uninstall <prof_name> <number>               ${NC}Uninstall the specified instance of the given profile name, you can put ${YELLOW}all${NC} instead of a number to uninstall all the duplicated instances\
+			\n  - ${YELLOW}dupmn iplist                                       ${NC}Shows all your configurated IPv4 and IPv6\
+			\n  - ${YELLOW}dupmn rpcchange <prof_name> <number> [port]        ${NC}Changes the RPC port used from the given number instance with the new one (or finds a new one by itself if no port is given)\
+			\n  - ${YELLOW}dupmn systemctlall <prof_name> <command>           ${NC}Applies the systemctl command to all the duplicated instances of the given profile name (but not the main instance)\
+			\n  - ${YELLOW}dupmn list [prof_name]                             ${NC}Shows the amount of duplicated instances of every masternode, if a profile name is provided, it lists an extended info of the profile instances\
+			\n  - ${YELLOW}dupmn swapfile <size_in_mbytes>                    ${NC}Creates, changes or deletes (if parameter is 0) a swapfile of the given size in MB to increase the virtual memory\
+			\n  - ${YELLOW}dupmn about                                        ${NC}Shows some info about the script\
 			\n${RED}BETA Options:${NC}\
-			\n  - ${YELLOW}dupmn ipinstall <prof_name> <ip>            ${NC}Install a new instance based on the parameters of the given profile name that will ue the given IP\
-			\n  - ${YELLOW}dupmn ipreinstall <prof_name> <number> <ip> ${NC}Reinstalls the specified instance with the given IP, this is just in case if the instance is giving problems\
+			\n  - ${YELLOW}dupmn ipinstall <prof_name> <ip> [copy]            ${NC}Install a new instance based on the parameters of the given profile name that will use the given IP, you can put ${YELLOW}copy${NC} as an extra parameter to copy the chain from the main node\
+			\n  - ${YELLOW}dupmn ipreinstall <prof_name> <number> <ip> [copy] ${NC}Reinstalls the specified instance with the given IP, this is just in case if the instance is giving problems, you can put ${YELLOW}copy${NC} as an extra parameter to copy the chain from the main node\
 			\n**NOTE**: ${YELLOW}<parameter>${NC} means required, ${YELLOW}[parameter]${NC} means optional."
 }
 function cmd_about() {
@@ -587,7 +588,7 @@ function cmd_about() {
 			 \n                                ╗ made by neo3587 ╔\
 			 \n           Source: ${CYAN}https://github.com/neo3587/dupmn${NC}\
 			 \n   FAQs: ${CYAN}https://github.com/neo3587/dupmn/wiki/FAQs${NC}\
-			 \n  BTC Donations: ${YELLOW}3HE1kwgHEWvxBa38NHuQbQQrhNZ9wxjhe7${NC}\
+			 \n  BTC Donations: ${YELLOW}3F6J19DmD5jowwwQbE9zxXoguGPVR716a7${NC}\
 			 \n==================================================="
 	if [[ $(diff -q <(cat <(echo "$(curl -s https://raw.githubusercontent.com/neo3587/dupmn/master/dupmn.sh)")) <(cat /usr/bin/dupmn)) ]]; then 
 		echo -e "\nUpdate available, use ${GREEN}bash dupmn_install.sh${NC} to install it\
@@ -744,22 +745,22 @@ function main() {
 			;;
 		"ipinstall")
 			if [[ -z "$3" ]]; then
-				echo -e "${YELLOW}dupmn ipinstall <coin_name> <ip>${NC} requires a profile name of an added profile and a IP as a parameters"
+				echo -e "${YELLOW}dupmn ipinstall <coin_name> <ip> [copy]${NC} requires a profile name of an added profile and a IP as a parameters"
 				exit
 			fi
 			load_profile "$2"
 			ip_valid "$3"
-			cmd_ipinstall "$2" $(($dup_count+1))
+			cmd_ipinstall "$2" $(($dup_count+1)) "$4"
 			;;
 		"ipreinstall")
 			if [[ -z "$4" ]]; then
-				echo -e "${YELLOW}dupmn ipreinstall <coin_name> <number> <ip>${NC} requires a profile name, instance and a IP as parameters"
+				echo -e "${YELLOW}dupmn ipreinstall <coin_name> <number> <ip> [copy]${NC} requires a profile name, instance and a IP as parameters"
 				exit
 			fi
 			load_profile "$2"
 			instance_valid "$2" "$3"
 			ip_valid "$4"
-			cmd_reinstall "$2" "$3" "1"
+			cmd_reinstall "$2" "$3" "1" "$5"
 			;;
 		"iplist")
 			cmd_iplist
