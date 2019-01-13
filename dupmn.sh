@@ -522,17 +522,9 @@ function cmd_swapfile() {
 	local total_mb=$(df / --output=size -m | grep [0-9])
 
 	if [[ $(($1)) -ge $(($avail_mb)) ]]; then
-		echo -e "There's only $(($avail_mb)) MB available in the hard disk (NOTE: recommended to use a swapfile of NUMBER_OF_MASTERNODES * 150 MB)"
+		echo -e "There's only $(($avail_mb)) MB available in the hard disk"
 		exit
 	fi
-
-	echo -e "All duplicated instances will be temporary disabled until the swapfile command is finished to decrease the pressure on RAM..."
-
-	local -A conf=$(get_conf .dupmn/dupmn.conf)
-	for x in "${!conf[@]}"; do
-		local -A prof=$(get_conf .dupmn/$x)
-		cmd_systemctlall $x "stop"
-	done
 
 	if [[ -f /mnt/dupmn_swapfile ]]; then
 		swapoff /mnt/dupmn_swapfile > /dev/null 2>&1
@@ -550,12 +542,6 @@ function cmd_swapfile() {
 		/mnt/dupmn_swapfile swap swap defaults 0 0 > /dev/null 2>&1
 		echo -e "Swapfile new size = ${GREEN}$(($1)) MB${NC}"
 	fi
-
-	echo -e "Reenabling instances... (you don't need to activate them again from your wallet and your position in the mn pool reward won't be lost)"
-	for x in "${!conf[@]}"; do
-		local -A prof=$(get_conf .dupmn/$x)
-		cmd_systemctlall $x "start"
-	done
 
 	echo -e "Use ${YELLOW}swapon -s${NC} to see the changes of your swapfile and ${YELLOW}free -m${NC} to see the total available memory"
 }
