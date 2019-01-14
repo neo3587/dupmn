@@ -130,7 +130,6 @@ function wallet_status() {
 }
 function wait_wallet_status() {
 	# <$1 = 1/0 (on/off)>
-
 	while [[ $(wallet_status) != "$1" ]]; do
 		sleep 1
 	done
@@ -174,7 +173,9 @@ function install_proc() {
 	fi
 
 	new_key=$($coin_cli masternode genkey)
-	new_rpc=$(find_port $(($(grep -Po '(?<=RPC_PORT=).*' .dupmn/$1 || grep -Po '(?<=rpcport=).*' $coin_folder/$coin_config || echo -e "1023")+1)))
+	new_rpc=$(conf_get_value .dupmn/$1 "RPC_PORT")
+	new_rpc=$([[ -n $new_rpc ]] && echo $new_rpc || conf_get_value $coin_folder/$coin_config "rpcport")
+	new_rpc=$(find_port $(($([[ -n $new_rpc ]] && echo $new_rpc || echo "1023")+1)))
 
 	[[ "$3" == "copy" ]] && $coin_cli stop > /dev/null 2>&1
 
@@ -205,8 +206,8 @@ function conf_set_value() {
 	[[ $(grep -ws "^$2" "$1" | cut -d "=" -f1) == "$2" ]] && sed -i "/^$2=/s/=.*/=$3/" "$1" || ([[ "$4" == "1" ]] && echo -e "$2=$3" >> $1)
 }
 function conf_get_value() {
-	# <$1 = conf_file> | <$2 = key>
-	grep -ws "^$2" "$1" | cut -d "=" -f2
+        # <$1 = conf_file> | <$2 = key>| [$3 = limit]
+        [[ $3 == "0" ]] && grep -ws "^$2" "$1" | cut -d "=" -f2 || grep -ws "^$2" "$1" | cut -d "=" -f2 | head $([[ -z $3 ]] && echo "-1" || echo "-$3")
 }
 function get_ips() {
 	# <$1 = 4 or 6>
