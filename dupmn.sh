@@ -54,9 +54,7 @@ function get_conf() {
 }
 function port_check() {
 	# <$1 = port_number>
-	if [[ ! $(lsof -Pi :$1 -sTCP:LISTEN -t) ]]; then
-		echo -e 1
-	fi
+	[[ ! $(lsof -Pi :$1 -sTCP:LISTEN -t) ]] && echo "1"
 }
 function find_port() {
 	# <$1 = initial_check>
@@ -79,9 +77,7 @@ function find_port() {
 }
 function is_number() {
 	# <$1 = number>
-	if [[ $1 =~ ^[0-9]+$ ]]; then
-		echo -e "1"
-	fi
+	[[ $1 =~ ^[0-9]+$ ]] && echo "1"
 }
 function configure_systemd() {
 	# <$1 = instance_number>
@@ -123,16 +119,10 @@ function configure_systemd() {
 			\nThere's also the chance that this could be a false positive error (so actually everything is ok), anyway please use the commands above to investigate."
 	fi
 }
-function wallet_status() {
+function wallet_loaded() {
 	exec 2> /dev/null
-	[[ $($coin_cli getblockcount) =~ ^[0-9]+$ ]] && echo "1" || echo "0"
+	[[ $(is_number $($coin_cli getblockcount)) ]] && echo "1"
 	exec 2> /dev/tty
-}
-function wait_wallet_status() {
-	# <$1 = 1/0 (on/off)>
-	while [[ $(wallet_status) != "$1" ]]; do
-		sleep 1
-	done
 }
 function install_proc() {
 	# <$1 = profile_name> | <$2 = instance_number> | [$3 = copy]
@@ -154,20 +144,24 @@ function install_proc() {
 	new_folder="$coin_folder$2"
 
 	if [[ "$3" == "copy" ]]; then
-		if [[ $(wallet_status) == "1" ]]; then
+		if [[ $(wallet_loaded) ]]; then
 			echo -e "Main masternode must be stopped to copy the chain on install, use ${GREEN}$coin_cli stop${NC} to stop the main node\nNOTE: Some main nodes may need to stop a systemctl service instead"
 			exit
 		fi
 		echo "Copying main node chain... (may take a while)"
 		rm -rf $new_folder
-		cp -r $coin_folder $new_folder
+		#cp -r $coin_folder $new_folder
+		rsync --info=progress2 -a $coin_folder $new_folder
 		rm -rf $new_folder/$coin_config
 		rm -rf $new_folder/wallet.dat
-		$coin_daemon -daemon > /dev/null 2>&1
-		wait_wallet_status "1"
+		$coin_daemon -daemon >  /dev/null 2>&1
+		echo "Temporary reactivating the wallet to get a new private key..."
+		while [[ ! $(wallet_loaded) ]]; do
+			sleep 1
+		done
 	fi
 
-	if [[ $(wallet_status) == "0" ]]; then
+	if [[ ! $(wallet_loaded) ]]; then
 		echo -e "Main masternode must be running to create a duplicate masternode, use ${GREEN}$coin_daemon -daemon${NC} to start the main masternode"
 		exit
 	fi
@@ -186,20 +180,14 @@ function install_proc() {
 	$(conf_set_value $new_folder/$coin_config "listen"            "0"      1)
 	$(conf_set_value $new_folder/$coin_config "masternodeprivkey" $new_key 1)
 
-	echo -e "#!/bin/bash\n$coin_cli \$@"    > /usr/bin/$coin_cli-0
-	echo -e "#!/bin/bash\n$coin_daemon \$@" > /usr/bin/$coin_daemon-0
-	echo -e "#!/bin/bash\n$coin_cli -datadir=$new_folder \$@"    > /usr/bin/$coin_cli-$2
-	echo -e "#!/bin/bash\n$coin_daemon -datadir=$new_folder \$@" > /usr/bin/$coin_daemon-$2
-	echo -e "#!/bin/bash\nfor (( i=0; i<=$2; i++ )) do\n echo -e MN\$i:\n $coin_cli-\$i \$@\ndone"    > /usr/bin/$coin_cli-all
-	echo -e "#!/bin/bash\nfor (( i=0; i<=$2; i++ )) do\n echo -e MN\$i:\n $coin_daemon-\$i \$@\ndone" > /usr/bin/$coin_daemon-all
-	chmod +x /usr/bin/$coin_cli-0
-	chmod +x /usr/bin/$coin_daemon-0
-	chmod +x /usr/bin/$coin_cli-$2
-	chmod +x /usr/bin/$coin_daemon-$2
-	chmod +x /usr/bin/$coin_cli-all
-	chmod +x /usr/bin/$coin_daemon-all
+	$(make_chmod_file /usr/bin/$coin_cli-0      "#!/bin/bash\n$coin_cli \$@")
+        $(make_chmod_file /usr/bin/$coin_daemon-0   "#!/bin/bash\n$coin_daemon \$@")
+	$(make_chmod_file /usr/bin/$coin_cli-$2     "#!/bin/bash\n$coin_cli -datadir=$new_folder \$@")
+	$(make_chmod_file /usr/bin/$coin_daemon-$2  "#!/bin/bash\n$coin_daemon -datadir=$new_folder \$@")
+	$(make_chmod_file /usr/bin/$coin_cli-all    "#!/bin/bash\nfor (( i=0; i<=$2; i++ )) do\n echo -e MN\$i:\n $coin_cli-\$i \$@\ndone")
+	$(make_chmod_file /usr/bin/$coin_daemon-all "#!/bin/bash\nfor (( i=0; i<=$2; i++ )) do\n echo -e MN\$i:\n $coin_daemon-\$i \$@\ndone")
 
-	$(conf_set_value .dupmn/dupmn.conf $1 $2)
+	$(conf_set_value .dupmn/dupmn.conf $1 $2 1)
 }
 function conf_set_value() {
 	# <$1 = conf_file> | <$2 = key> | <$3 = value> | [$4 = force_create]
@@ -208,6 +196,11 @@ function conf_set_value() {
 function conf_get_value() {
         # <$1 = conf_file> | <$2 = key>| [$3 = limit]
         [[ $3 == "0" ]] && grep -ws "^$2" "$1" | cut -d "=" -f2 || grep -ws "^$2" "$1" | cut -d "=" -f2 | head $([[ -z $3 ]] && echo "-1" || echo "-$3")
+}
+function make_chmod_file() {
+	# <$1 = file> | <$2 = content>
+	echo -e "$2" > $1
+	chmod +x $1
 }
 function get_ips() {
 	# <$1 = 4 or 6>
@@ -248,18 +241,14 @@ function cmd_profadd() {
 		fi
 	done
 
-	if [ $2 = "dupmn.conf" ]; then 
+	if [[ "$2" = "dupmn.conf" ]]; then 
 		echo -e "From the infinite amount of possible names for the profile and you had to choose the only one that you can't use... for god sake..."
 		exit
-	elif [ ! -d ".dupmn" ]; then
-		mkdir ".dupmn"
 	fi
-	if [ ! -f ".dupmn/dupmn.conf" ]; then
-		touch ".dupmn/dupmn.conf"
-	fi
-	if [ ! $(grep $2 .dupmn/dupmn.conf) ]; then
-		echo -e "$2=0" >> ".dupmn/dupmn.conf"
-	fi
+
+	[[ ! -d ".dupmn" ]] && mkdir ".dupmn"
+	[[ ! -f ".dupmn/dupmn.conf" ]] && touch ".dupmn/dupmn.conf"
+	$(conf_set_value .dupmn/dupmn.conf $2 0 1)
 
 	cp "$1" ".dupmn/$2"
 
@@ -315,16 +304,16 @@ function cmd_install() {
 function cmd_reinstall() {
 	# <$1 = profile_name> | <$2 = instance_number> | <$3 = use_ipinstall> | [$4 = copy]
 
-	if [[ "$4" != "copy" && $(wallet_status) == "0" ]]; then
+	if [[ "$4" != "copy" && ! $(wallet_loaded) ]]; then
 		echo -e "Main masternode must be running to reinstall a duplicate masternode, use ${GREEN}$coin_daemon -daemon${NC} to start the main masternode"
 		exit
-	elif [[ "$4" == "copy" && $(wallet_status) == "1" ]]; then 
+	elif [[ "$4" == "copy" && $(wallet_loaded) ]]; then
 		echo -e "Main masternode must be stopped to copy the chain on reinstall, use ${GREEN}$coin_cli stop${NC} to stop the main node\nNOTE: Some main nodes may need to stop a systemctl service instead"
 		exit
 	fi
 
-	systemctl stop $coin_name-$(($2)).service
-	rm -rf $coin_folder$(($2))
+	systemctl stop $coin_name-$2.service
+	rm -rf $coin_folder$2
 
 	if [[ "$3" == "0" ]]; then
 		cmd_install $1 $2 $4
@@ -332,10 +321,8 @@ function cmd_reinstall() {
 		cmd_ipinstall $1 $2 $4
 	fi
 
-	echo -e "#!/bin/bash\nfor (( i=0; i<=$dup_count; i++ )) do\n echo -e MN\$i:\n $coin_cli-\$i \$@\ndone"    > /usr/bin/$coin_cli-all
-	echo -e "#!/bin/bash\nfor (( i=0; i<=$dup_count; i++ )) do\n echo -e MN\$i:\n $coin_daemon-\$i \$@\ndone" > /usr/bin/$coin_daemon-all
-	chmod +x /usr/bin/$coin_cli-all
-	chmod +x /usr/bin/$coin_daemon-all
+	$(make_chmod_file /usr/bin/$coin_cli-all    "#!/bin/bash\nfor (( i=0; i<=$dup_count; i++ )) do\n echo -e MN\$i:\n $coin_cli-\$i \$@\ndone")
+	$(make_chmod_file /usr/bin/$coin_daemon-all "#!/bin/bash\nfor (( i=0; i<=$dup_count; i++ )) do\n echo -e MN\$i:\n $coin_daemon-\$i \$@\ndone")
 
 	$(conf_set_value .dupmn/dupmn.conf $1 $dup_count)
 }
@@ -357,23 +344,19 @@ function cmd_uninstall() {
 			rm -rf /etc/systemd/system/$coin_name-$i.service
 			rm -rf $coin_folder$i
 		done
-		sed -i "/^$1=/s/=.*/=0/" ".dupmn/dupmn.conf"
-		echo -e "#!/bin/bash\nfor (( i=0; i<=0; i++ )) do\n echo -e MN\$i:\n $coin_cli-\$i \$@\ndone" > /usr/bin/$coin_cli-all
-		echo -e "#!/bin/bash\nfor (( i=0; i<=0; i++ )) do\n echo -e MN\$i:\n $coin_daemon-\$i \$@\ndone" > /usr/bin/$coin_daemon-all
-		chmod +x /usr/bin/$coin_cli-all
-		chmod +x /usr/bin/$coin_daemon-all
+		$(conf_set_value .dupmn/dupmn.conf $1 0 1)
+		$(make_chmod_file /usr/bin/$coin_cli-all    "#!/bin/bash\nfor (( i=0; i<=0; i++ )) do\n echo -e MN\$i:\n $coin_cli-\$i \$@\ndone")
+		$(make_chmod_file /usr/bin/$coin_daemon-all "#!/bin/bash\nfor (( i=0; i<=0; i++ )) do\n echo -e MN\$i:\n $coin_daemon-\$i \$@\ndone")
 		systemctl daemon-reload
 	else
-		echo -e "Uninstalling ${BLUE}$1${NC} instance ${CYAN}number $(($2))${NC}"
-		rm -rf /usr/bin/$coin_cli-$(($dup_count))
-		rm -rf /usr/bin/$coin_daemon-$(($dup_count))
-		systemctl stop $coin_name-$(($2)).service
-		sed -i "/^$1=/s/=.*/=$(($dup_count-1))/" ".dupmn/dupmn.conf"
-		echo -e "#!/bin/bash\nfor (( i=0; i<=$(($dup_count-1)); i++ )) do\n echo -e MN\$i:\n $coin_cli-\$i \$@\ndone"    > /usr/bin/$coin_cli-all
-		echo -e "#!/bin/bash\nfor (( i=0; i<=$(($dup_count-1)); i++ )) do\n echo -e MN\$i:\n $coin_daemon-\$i \$@\ndone" > /usr/bin/$coin_daemon-all
-		chmod +x /usr/bin/$coin_cli-all
-		chmod +x /usr/bin/$coin_daemon-all
-		rm -rf $coin_folder$(($2))
+		echo -e "Uninstalling ${BLUE}$1${NC} instance ${CYAN}number $2${NC}"
+		rm -rf /usr/bin/$coin_cli-$dup_count
+		rm -rf /usr/bin/$coin_daemon-$dup_count
+		systemctl stop $coin_name-$2.service
+		$(conf_set_value .dupmn/dupmn.conf $1 $(($dup_count-1)) 1)
+		$(make_chmod_file /usr/bin/$coin_cli-all "#!/bin/bash\nfor (( i=0; i<=$(($dup_count-1)); i++ )) do\n echo -e MN\$i:\n $coin_cli-\$i \$@\ndone")
+		$(make_chmod_file /usr/bin/$coin_daemon-all "#!/bin/bash\nfor (( i=0; i<=$(($dup_count-1)); i++ )) do\n echo -e MN\$i:\n $coin_daemon-\$i \$@\ndone")
+		rm -rf $coin_folder$2
 
 		for (( i=$2; i<=$dup_count; i++ )); do
 			systemctl stop $coin_name-$i.service
@@ -410,9 +393,8 @@ function cmd_ipinstall() {
 
 	if [[ -z $(conf_get_value $coin_folder/$coin_config "bind") ]]; then
 		echo "Applying a tiny modification into the main masternode conf file, this only will be applied this time..."
-		local main_ip=$(conf_get_value $coin_folder/$coin_config "externalip")
-		main_ip=$([[ -z "$main_ip" ]] && echo $(conf_get_value $new_folder/$coin_config "masternodeaddr") || echo "$main_ip")
-		$(conf_set_value $coin_folder/$coin_config "bind"      $main_ip         1)
+		local main_ip=$(conf_get_value $new_folder/$coin_config "masternodeaddr")
+		$(conf_set_value $coin_folder/$coin_config "bind" $([[ -z "$main_ip" ]] && echo $(conf_get_value $coin_folder/$coin_config "externalip") || echo "$main_ip") 1)
 		$coin_cli stop > /dev/null 2>&1
 		sleep 5
 		$coin_daemon -daemon > /dev/null 2>&1
@@ -449,7 +431,7 @@ function cmd_iplist() {
 function cmd_rpcchange() {
 	# <$1 = profile_name> | <$2 = instance_number> | [$3 = port_number]
 
-	local new_port="$(grep -Po "rpcport=\K.*" $coin_folder$(($2))/$coin_config)";
+	local new_port=$(($(conf_get_value $coin_folder$2/$coin_config "rpcport")))
 
 	if [[ -z "$3" ]]; then
 		echo -e "No port provided, the port will be changed for any other free port..."
@@ -462,18 +444,17 @@ function cmd_rpcchange() {
 		exit
 	else
 		new_port=$(($3))
-		if [[ ! $(port_check $(($new_port))) ]]; then
-			echo -e "Port ${MAGENTA}$(($new_port))${NC} seems to be in use by another process"
+		if [[ ! $(port_check $new_port) ]]; then
+			echo -e "Port ${MAGENTA}$new_port${NC} seems to be in use by another process"
 			exit
 		fi
 	fi
 
-	systemctl stop $coin_name-$(($2)).service > /dev/null
-	sleep 3
-	sed -i "/^rpcport=/s/=.*/=$(($new_port))/" $coin_folder$(($2))/$coin_config
-	systemctl start $coin_name-$(($2)).service
+	$(conf_set_value $coin_folder$2/$coin_config "rpcport" $new_port 1)
+	systemctl stop $coin_name-$2.service > /dev/null
+	systemctl start $coin_name-$2.service
 
-	echo -e "${BLUE}$1${NC} instance ${CYAN}number $(($2))${NC} is now listening the rpc port ${MAGENTA}$(($new_port))${NC}"
+	echo -e "${BLUE}$1${NC} instance ${CYAN}number $2${NC} is now listening the rpc port ${MAGENTA}$new_port${NC}"
 }
 function cmd_systemctlall() {
 	# <$1 = profile_name> | <$2 = command>
@@ -527,9 +508,7 @@ function cmd_swapfile() {
 		exit
 	fi
 
-	if [[ -f /mnt/dupmn_swapfile ]]; then
-		swapoff /mnt/dupmn_swapfile > /dev/null 2>&1
-	fi
+	[[ -f /mnt/dupmn_swapfile ]] && swapoff /mnt/dupmn_swapfile > /dev/null 2>&1
 
 	if [[ $(($1)) = 0 ]]; then
 		rm -rf /mnt/dupmn_swapfile
@@ -626,17 +605,14 @@ function main() {
 	function instance_valid() {
 		# <$1 = profile_name> | <$2 = instance_number>
 
-		local -A conf=$(get_conf .dupmn/dupmn.conf)
-		local count=${conf[$1]}
-
 		if [[ ! $(is_number $2) ]]; then
 			echo -e "${RED}$2${NC} is not a number"
 			exit
 		elif [[ $(($2)) = 0 ]]; then
 			echo -e "Instance ${CYAN}0${NC} is a reference to the main masternode, not a duplicated one, can't modify this one"
 			exit
-		elif [[ $(($2)) -gt $(($count)) ]]; then
-			echo -e "Instance ${CYAN}$2${NC} doesn't exists, there are only ${CYAN}$(($count))${NC} instances of ${BLUE}$1${NC}"
+		elif [[ $(($2)) -gt $dup_count ]]; then
+			echo -e "Instance ${CYAN}$(($2))${NC} doesn't exists, there are only ${CYAN}$dup_count${NC} instances of ${BLUE}$1${NC}"
 			exit
 		fi
 	}
@@ -717,7 +693,7 @@ function main() {
 			fi
 			load_profile "$2"
 			instance_valid "$2" "$3"
-			cmd_reinstall "$2" "$3" "0" "$4"
+			cmd_reinstall "$2" $(($3)) "0" "$4"
 			;;
 		"uninstall")
 			if [[ -z "$3" ]]; then
@@ -727,8 +703,10 @@ function main() {
 			load_profile "$2"
 			if [[ "$3" != "all" ]]; then
 				instance_valid "$2" "$3"
+				cmd_uninstall "$2" $(($3))
+			else
+				cmd_uninstall "$2" "$3"
 			fi
-			cmd_uninstall "$2" "$3"
 			;;
 		"ipinstall")
 			if [[ -z "$3" ]]; then
@@ -747,7 +725,7 @@ function main() {
 			load_profile "$2"
 			instance_valid "$2" "$3"
 			ip_valid "$4"
-			cmd_reinstall "$2" "$3" "1" "$5"
+			cmd_reinstall "$2" $(($3)) "1" "$5"
 			;;
 		"iplist")
 			cmd_iplist
@@ -759,7 +737,7 @@ function main() {
 			fi
 			load_profile "$2"
 			instance_valid "$2" "$3"
-			cmd_rpcchange "$2" "$3" "$4"
+			cmd_rpcchange "$2" $(($3)) "$4"
 			;;
 		"systemctlall")
 			if [[ -z "$3" ]]; then
