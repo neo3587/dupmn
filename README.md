@@ -1,8 +1,8 @@
 # Duplicate MasterNode (dupmn)
 
-A script to easily create and manage multiple masternodes of the same coin in the same VPS, initially made for BCARD, can be adapted for almost any other coin (a few coins needs a 2nd IP and this script won't work for these ones... yet).
+A script to easily create and manage multiple masternodes of the same coin in the same VPS, initially made for BCARD, can be adapted for almost any other coin.
 
-Note: For any technical question not resolved in this readme, check <a href="https://github.com/neo3587/dupmn/wiki/FAQs">the FAQ</a> (still work in progress)
+Note: For any technical question not resolved in this readme, check <a href="https://github.com/neo3587/dupmn/wiki/FAQs">the FAQ</a> (still work in progress).
 
 # Index
 
@@ -52,7 +52,7 @@ Usage example based on the CARDbuyers profile.
 wget -q https://raw.githubusercontent.com/neo3587/dupmn/master/profiles/CARDbuyers.dmn
 dupmn profadd CARDbuyers.dmn CARDbuyers
 ```
-Now the CARDbuyers profile is saved and can be removed if you want: `rm -rf CARDbuyers.dmn`
+Now the CARDbuyers profile is saved and can be removed if you want: `rm -rf CARDbuyers.dmn` (you won't need to run the `profadd` command anymore for this coin).
 
 Let's create 3 extra instances:
 ```
@@ -60,7 +60,7 @@ dupmn install CARDbuyers
 dupmn install CARDbuyers 
 dupmn install CARDbuyers 
 ```
-Every instance has it own private key (it will be shown after installing the new instance).
+Every instance has it own private key, it will be shown after installing the new instance, also can be seen with `dupmn list CARDbuyers`.
 
 Now you can manage every instance like this:
 ```
@@ -69,22 +69,22 @@ CARDbuyers-cli-2 getblockcount
 CARDbuyers-cli-3 getinfo
 CARDbuyers-cli-all masternode status
 ```
-There's also a `CARDbuyers-cli-0`, but is just a reference to the 'main instance', not a created one with dupmn.
+There's also a `CARDbuyers-cli-0`, but is just a reference to the 'main node', not a created one with dupmn.
 
-When you're get tired of one masternode, per example the 3rd instance, then just uninstall it with:
+When you get tired of one masternode, per example the 3rd instance, then just uninstall it with:
 ```
 dupmn uninstall CARDbuyers 3
 ```
-Or you can even uninstall them all (except the 'main instance') with:
+Or you can even uninstall them all (except the 'main node') with:
 ```
 dupmn uninstall CARDbuyers all
 ```
 The new masternode instances will use the same IP and port, so the `masternode.conf` will look like this:
 ```
-MN01   123.45.67.89:48451 713RMbHoMgTKewAmsUwqqJAFH9BwhgKixe96tYbZdtLmysFS6vz a4d79e50933ce430a3b2874738a156f3ecb866e598d7c9ecf3382902e2d29afd 0
-MN01_1 123.45.67.89:48451 72aQd3U3qRFsc2KviX5iWF3BrK3CxHLi23BrToikFPCCpRr5kt9 26072b1000545db553c425c776cea9d29ef341512dd88b7522419db7dd952ebc 0
-MN01_2 123.45.67.89:48451 71SuLvXHebyT4NtX96ygSJVMhwns9GaBuc2yfdJQjjCokDx5Cem 349acfcf2ea88ab0f9f165ebfd4b98273e260b813b757242e1f371d7075d3f94 1
-MN01_3 123.45.67.89:48451 719FiV3S7m874FH1A5hmRYGFUwEzd8esES8k6TJoevgJBHnmQV9 6dbff523ae79c29c48bcd77231f15c0b8354daa2ea32cb46ed0dd0fe31ec7e82 0
+MN01 123.45.67.89:48451 713RMbHoMgTKewAmsUwqqJAFH9BwhgKixe96tYbZdtLmysFS6vz a4d79e50933ce430a3b2874738a156f3ecb866e598d7c9ecf3382902e2d29afd 0
+MN02 123.45.67.89:48451 72aQd3U3qRFsc2KviX5iWF3BrK3CxHLi23BrToikFPCCpRr5kt9 26072b1000545db553c425c776cea9d29ef341512dd88b7522419db7dd952ebc 0
+MN03 123.45.67.89:48451 71SuLvXHebyT4NtX96ygSJVMhwns9GaBuc2yfdJQjjCokDx5Cem 349acfcf2ea88ab0f9f165ebfd4b98273e260b813b757242e1f371d7075d3f94 1
+MN04 123.45.67.89:48451 719FiV3S7m874FH1A5hmRYGFUwEzd8esES8k6TJoevgJBHnmQV9 6dbff523ae79c29c48bcd77231f15c0b8354daa2ea32cb46ed0dd0fe31ec7e82 0
 ```
 Using `dupmn install CARDbuyers` will show you the masternode private key for that instance, the transaction must be obviosuly different for each masternode, you can't use the same transaction to run 2 masternodes, even if they're in the same VPS.
 
