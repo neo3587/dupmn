@@ -152,7 +152,7 @@ function install_proc() {
 		echo "Copying main node chain... (may take a while)"
 		rm -rf $new_folder
 		#cp -r $coin_folder $new_folder
-		rsync --info=progress2 -a $coin_folder $new_folder
+		rsync -adm --info=progress2 $coin_folder/ $new_folder/
 		rm -rf $new_folder/$coin_config
 		rm -rf $new_folder/wallet.dat
 		$coin_daemon -daemon >  /dev/null 2>&1
