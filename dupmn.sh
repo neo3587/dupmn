@@ -34,13 +34,14 @@ readonly NC='\e[0m'
 
 
 coin_name=""
-coin_path=""
 coin_daemon=""
 coin_cli=""
 coin_folder=""
 coin_config=""
 rpc_port=""
 dup_count=""
+exec_coin_cli=""
+exec_coin_daemon=""
 ip=""
 
 
@@ -73,11 +74,11 @@ function find_port() {
 		dup_ports="$dup_ports $(conf_get_value $coin_folder$i/$coin_config rpcport) "
 	done
 	local port=$(port_check_loop $1 49151 "( $dup_ports )")
-	[[ ${#port} -gt 0 ]] && echo $port || echo $(port_check_loop 1024 $1 "( $dup_ports )")
+	[[ -n "$port" ]] && echo $port || echo $(port_check_loop 1024 $1 "( $dup_ports )")
 }
 function is_number() {
 	# <$1 = number>
-	[[ $1 =~ ^[0-9]+$ ]] && echo "1"
+	[[ "$1" =~ ^[0-9]+$ ]] && echo "1"
 }
 function configure_systemd() {
 	# <$1 = instance_number>
@@ -90,8 +91,8 @@ function configure_systemd() {
 	\nUser=root\
 	\nGroup=root\
 	\nType=forking\
-	\nExecStart=$coin_path$coin_daemon -daemon -conf=$coin_folder$1/$coin_config -datadir=$coin_folder$1\
-	\nExecStop=$coin_path$coin_cli -conf=$coin_folder$1/$coin_config -datadir=$coin_folder$1 stop\
+	\nExecStart=$exec_coin_daemon -daemon -conf=$coin_folder$1/$coin_config -datadir=$coin_folder$1\
+	\nExecStop=$exec_coin_cli -conf=$coin_folder$1/$coin_config -datadir=$coin_folder$1 stop\
 	\nRestart=always\
 	\nPrivateTmp=true\
 	\nTimeoutStopSec=60s\
@@ -195,7 +196,7 @@ function conf_set_value() {
 }
 function conf_get_value() {
         # <$1 = conf_file> | <$2 = key>| [$3 = limit]
-        [[ $3 == "0" ]] && grep -ws "^$2" "$1" | cut -d "=" -f2 || grep -ws "^$2" "$1" | cut -d "=" -f2 | head $([[ -z $3 ]] && echo "-1" || echo "-$3")
+        [[ "$3" == "0" ]] && grep -ws "^$2" "$1" | cut -d "=" -f2 || grep -ws "^$2" "$1" | cut -d "=" -f2 | head $([[ -z "$3" ]] && echo "-1" || echo "-$3")
 }
 function make_chmod_file() {
 	# <$1 = file> | <$2 = content>
@@ -204,9 +205,9 @@ function make_chmod_file() {
 }
 function get_ips() {
 	# <$1 = 4 or 6>
-	if [[ $1 = "4" ]]; then
+	if [[ "$1" = "4" ]]; then
 		echo -e $(ip addr show | grep -Eo 'inet (addr:)?([0-9]*\.){3}[0-9]*' | grep -Eo '([0-9]*\.){3}[0-9]*' | grep -v '127.0.0.1')
-	elif [[ $1 = "6" ]]; then
+	elif [[ "$1" = "6" ]]; then
 		echo -e $(ip addr show | awk '/inet6/{print $2}' | grep -v '::1/128' | cut -d / -f1)
 	fi
 }
@@ -215,7 +216,7 @@ function netmask_cidr() {
 	if [[ $(echo $1 | grep -w -E -o '^(254|252|248|240|224|192|128)\.0\.0\.0|255\.(254|252|248|240|224|192|128|0)\.0\.0|255\.255\.(254|252|248|240|224|192|128|0)\.0|255\.255\.255\.(255|254|252|248|240|224|192|128|0)') ]]; then
         local nbits=0
         for oct in $(echo $1 | tr "." " "); do
-            while [[ $oct > 0 ]]; do
+            while [[ $oct -gt 0 ]]; do
                 oct=$(($oct << 1 & 255))
                 nbits=$(($nbits+1))
             done
@@ -229,7 +230,7 @@ function cmd_profadd() {
 	# <$1 = profile_file> | <$2 = profile_name>
 
 	local -A prof=$(get_conf $1)
-	local CMD_ARRAY=(COIN_NAME COIN_PATH COIN_DAEMON COIN_CLI COIN_FOLDER COIN_CONFIG)
+	local CMD_ARRAY=(COIN_NAME COIN_DAEMON COIN_CLI COIN_FOLDER COIN_CONFIG)
 
 	for var in "${CMD_ARRAY[@]}"; do
 		if [[ ! "${!prof[@]}" =~ "$var" ]]; then
@@ -252,12 +253,8 @@ function cmd_profadd() {
 
 	cp "$1" ".dupmn/$2"
 
-	local fix_path=${prof[COIN_PATH]}
 	local fix_folder=${prof[COIN_FOLDER]}
 
-	if [[ ${fix_path:${#fix_path}-1:1} != "/" ]]; then
-		sed -i "/^COIN_PATH=/s/=.*/=\"${fix_path//"/"/"\/"}\/\"/" .dupmn/$2
-	fi
 	if [[ ${fix_folder:${#fix_folder}-1:1} = "/" ]]; then
 		fix_folder=${fix_folder::-1}
 		sed -i "/^COIN_FOLDER=/s/=.*/=\"${fix_folder//"/"/"\/"}\"/" .dupmn/$2
@@ -567,7 +564,7 @@ function cmd_about() {
 function main() {
 
 	function load_profile() {
-		# <$1 = profile_name>
+		# <$1 = profile_name> | [$2 = check_exec]
 
 		if [[ ! -f ".dupmn/$1" ]]; then
 			echo -e "${BLUE}$1${NC} profile hasn't been added"
@@ -577,7 +574,7 @@ function main() {
 		local -A prof=$(get_conf .dupmn/$1)
 		local -A conf=$(get_conf .dupmn/dupmn.conf)
 
-		local CMD_ARRAY=(COIN_NAME COIN_PATH COIN_DAEMON COIN_CLI COIN_FOLDER COIN_CONFIG)
+		local CMD_ARRAY=(COIN_NAME COIN_DAEMON COIN_CLI COIN_FOLDER COIN_CONFIG)
 		for var in "${CMD_ARRAY[@]}"; do
 			if [[ ! "${!prof[@]}" =~ "$var" || -z "${prof[$var]}" ]]; then
 				echo -e "Seems like you modified something that was supposed to remain unmodified: ${MAGENTA}$var${NC} parameter should exists and have a assigned value in ${GREEN}.dupmn/$1${NC} file"
@@ -592,15 +589,24 @@ function main() {
 		fi
 
 		coin_name="${prof[COIN_NAME]}"
-		coin_path="${prof[COIN_PATH]}"
 		coin_daemon="${prof[COIN_DAEMON]}"
 		coin_cli="${prof[COIN_CLI]}"
 		coin_folder="${prof[COIN_FOLDER]}"
 		coin_config="${prof[COIN_CONFIG]}"
 		rpc_port="${prof[RPC_PORT]}"
 		dup_count=$((${conf[$1]}))
+		exec_coin_daemon=$(which $coin_daemon)
+		exec_coin_cli=$(which $coin_cli)
 
-		# check here if binaries and folders exists
+		if [[ "$2" == "1" ]]; then
+			if [[ -z "$exec_coin_daemon" ]]; then
+				echo -e "Can't locate ${GREEN}$coin_daemon${NC}, it must be at ${CYAN}/usr/bin/${NC} or ${CYAN}/usr/local/bin/${NC}"
+				exit
+			elif [[ -z "$exec_coin_cli" ]]; then
+				echo -e "Can't locate ${GREEN}$coin_cli${NC}, it must be at ${CYAN}/usr/bin/${NC} or ${CYAN}/usr/local/bin/${NC}"
+				exit
+			fi
+		fi
 	}
 	function instance_valid() {
 		# <$1 = profile_name> | <$2 = instance_number>
@@ -629,7 +635,7 @@ function main() {
 
 		if [[ $(echo $(get_ips 4) | grep -w "$ip") ]]; then
 			return
-		elif [[ $1 =~ ^[0-9a-f:]+$ && $(echo $1 | grep -o "::" | wc -l) -le 1 ]]; then
+		elif [[ "$1" =~ ^[0-9a-f:]+$ && $(echo $1 | grep -o "::" | wc -l) -le 1 ]]; then
 
 			echo $ip | grep -qs "^:" && ip="0${ip}"
 
@@ -640,10 +646,10 @@ function main() {
 			set $(echo $ip | grep -o "[0-9a-f]\+")
 
 			ip=$(echo "$(hexc $1):$(hexc $2):$(hexc $3):$(hexc $4):$(hexc $5):$(hexc $6):$(hexc $7):$(hexc $8)" | sed "s/:0:/::/")
-			while [[ $ip =~ "::0:" ]]; do
+			while [[ "$ip" =~ "::0:" ]]; do
 				ip=$(echo $ip | sed 's/::0:/::/g')
 			done
-			while [[ $ip =~ ":::" ]]; do
+			while [[ "$ip" =~ ":::" ]]; do
 				ip=$(echo $ip | sed 's/:::/::/g')
 			done
 
@@ -683,7 +689,7 @@ function main() {
 				echo -e "${YELLOW}dupmn install <coin_name> [copy]${NC} requires a profile name of an added profile as a parameter"
 				exit
 			fi
-			load_profile "$2"
+			load_profile "$2" "1"
 			cmd_install "$2" $(($dup_count+1)) "$3"
 			;;
 		"reinstall")
@@ -691,7 +697,7 @@ function main() {
 				echo -e "${YELLOW}dupmn reinstall <coin_name> <number> [copy]${NC} requires a profile name and a instance as parameters"
 				exit
 			fi
-			load_profile "$2"
+			load_profile "$2" "1"
 			instance_valid "$2" "$3"
 			cmd_reinstall "$2" $(($3)) "0" "$4"
 			;;
@@ -713,7 +719,7 @@ function main() {
 				echo -e "${YELLOW}dupmn ipinstall <coin_name> <ip> [copy]${NC} requires a profile name of an added profile and a IP as a parameters"
 				exit
 			fi
-			load_profile "$2"
+			load_profile "$2" "1"
 			ip_valid "$3"
 			cmd_ipinstall "$2" $(($dup_count+1)) "$4"
 			;;
@@ -722,7 +728,7 @@ function main() {
 				echo -e "${YELLOW}dupmn ipreinstall <coin_name> <number> <ip> [copy]${NC} requires a profile name, instance and a IP as parameters"
 				exit
 			fi
-			load_profile "$2"
+			load_profile "$2" "1"
 			instance_valid "$2" "$3"
 			ip_valid "$4"
 			cmd_reinstall "$2" $(($3)) "1" "$5"
@@ -735,7 +741,7 @@ function main() {
 				echo -e "${YELLOW}dupmn rpcchange <prof_name> <number> [port]${NC} requires a profile name, instance number and optionally a port number as parameters"
 				exit
 			fi
-			load_profile "$2"
+			load_profile "$2" "1"
 			instance_valid "$2" "$3"
 			cmd_rpcchange "$2" $(($3)) "$4"
 			;;
