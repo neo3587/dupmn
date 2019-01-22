@@ -151,7 +151,6 @@ function install_proc() {
 		fi
 		echo "Copying main node chain... (may take a while)"
 		rm -rf $new_folder
-		#cp -r $coin_folder $new_folder
 		rsync -adm --info=progress2 $coin_folder/ $new_folder/
 		rm -rf $new_folder/$coin_config
 		rm -rf $new_folder/wallet.dat
@@ -177,12 +176,19 @@ function install_proc() {
 	mkdir $new_folder > /dev/null 2>&1
 	cp $coin_folder/$coin_config $new_folder
 
-	$(conf_set_value $new_folder/$coin_config "rpcport"           $new_rpc 1)
-	$(conf_set_value $new_folder/$coin_config "listen"            "0"      1)
-	$(conf_set_value $new_folder/$coin_config "masternodeprivkey" $new_key 1)
+	local new_user=$(conf_get_value $coin_folder/$coin_config "rpcuser")
+	local new_pass=$(conf_get_value $coin_folder/$coin_config "rpcpassword")
+	new_user=$(cat /dev/urandom | tr -dc 'a-zA-Z0-9' | fold -w $([[ ${#new_user} -gt 3 ]] && echo ${#new_user} || echo 10) | head -n 1)
+	new_pass=$(cat /dev/urandom | tr -dc 'a-zA-Z0-9' | fold -w $([[ ${#new_pass} -gt 6 ]] && echo ${#new_pass} || echo 22) | head -n 1)
+
+	$(conf_set_value $new_folder/$coin_config "rpcuser"           $new_user 1)
+	$(conf_set_value $new_folder/$coin_config "rpcpassword"       $new_pass 1)
+	$(conf_set_value $new_folder/$coin_config "rpcport"           $new_rpc  1)
+	$(conf_set_value $new_folder/$coin_config "listen"            "0"       1)
+	$(conf_set_value $new_folder/$coin_config "masternodeprivkey" $new_key  1)
 
 	$(make_chmod_file /usr/bin/$coin_cli-0      "#!/bin/bash\n$coin_cli \$@")
-        $(make_chmod_file /usr/bin/$coin_daemon-0   "#!/bin/bash\n$coin_daemon \$@")
+    $(make_chmod_file /usr/bin/$coin_daemon-0   "#!/bin/bash\n$coin_daemon \$@")
 	$(make_chmod_file /usr/bin/$coin_cli-$2     "#!/bin/bash\n$coin_cli -datadir=$new_folder \$@")
 	$(make_chmod_file /usr/bin/$coin_daemon-$2  "#!/bin/bash\n$coin_daemon -datadir=$new_folder \$@")
 	$(make_chmod_file /usr/bin/$coin_cli-all    "#!/bin/bash\nfor (( i=0; i<=$2; i++ )) do\n echo -e MN\$i:\n $coin_cli-\$i \$@\ndone")
