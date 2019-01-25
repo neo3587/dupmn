@@ -4,6 +4,8 @@
 # Source: https://github.com/neo3587/dupmn
 
 # TODO:
+# - even more extended info on list ?
+# - separated service generator script file for main node ?
 # - check ipinstall ip is same than other dupes and main MN, if true => listen = 0 and advertise
 # - dupmn ipadd <ip> <netmask> <inc> # may require hard reset
 # - dupmn ipdel <ip> # not main one
@@ -131,12 +133,6 @@ function install_proc() {
 	if [ ! -d "$coin_folder" ]; then
 		echo -e "$coin_folder folder can't be found, $coin_name is not installed in the system or the given profile has a wrong parameter"
 		exit
-	elif [ ! "$(command -v $coin_daemon)" ]; then
-		echo -e "$coin_daemon command can't be found, $coin_name is not installed in the system or the given profile has a wrong parameter"
-		exit
-	elif [ ! "$(command -v $coin_cli)" ]; then
-		echo -e "$coin_cli command can't be found, $coin_name is not installed in the system or the given profile has a wrong parameter"
-		exit
 	elif [ ! "$(command -v lsof)" ]; then
 		echo -e "lsof is not installed in the system, use ${CYAN}apt-get install lsof${NC} and retry the installation"
 		exit
@@ -154,7 +150,7 @@ function install_proc() {
 		rsync -adm --info=progress2 $coin_folder/ $new_folder/
 		rm -rf $new_folder/$coin_config
 		rm -rf $new_folder/wallet.dat
-		$coin_daemon -daemon >  /dev/null 2>&1
+		$exec_coin_daemon -daemon >  /dev/null 2>&1
 		echo "Temporary reactivating the wallet to get a new private key..."
 		while [[ ! $(wallet_loaded) ]]; do
 			sleep 1
@@ -187,10 +183,10 @@ function install_proc() {
 	$(conf_set_value $new_folder/$coin_config "listen"            "0"       1)
 	$(conf_set_value $new_folder/$coin_config "masternodeprivkey" $new_key  1)
 
-	$(make_chmod_file /usr/bin/$coin_cli-0      "#!/bin/bash\n$coin_cli \$@")
-    $(make_chmod_file /usr/bin/$coin_daemon-0   "#!/bin/bash\n$coin_daemon \$@")
-	$(make_chmod_file /usr/bin/$coin_cli-$2     "#!/bin/bash\n$coin_cli -datadir=$new_folder \$@")
-	$(make_chmod_file /usr/bin/$coin_daemon-$2  "#!/bin/bash\n$coin_daemon -datadir=$new_folder \$@")
+	$(make_chmod_file /usr/bin/$coin_cli-0      "#!/bin/bash\n$exec_coin_cli \$@")
+    $(make_chmod_file /usr/bin/$coin_daemon-0   "#!/bin/bash\n$exec_coin_daemon \$@")
+	$(make_chmod_file /usr/bin/$coin_cli-$2     "#!/bin/bash\n$exec_coin_cli -datadir=$new_folder \$@")
+	$(make_chmod_file /usr/bin/$coin_daemon-$2  "#!/bin/bash\n$exec_coin_daemon -datadir=$new_folder \$@")
 	$(make_chmod_file /usr/bin/$coin_cli-all    "#!/bin/bash\nfor (( i=0; i<=$2; i++ )) do\n echo -e MN\$i:\n $coin_cli-\$i \$@\ndone")
 	$(make_chmod_file /usr/bin/$coin_daemon-all "#!/bin/bash\nfor (( i=0; i<=$2; i++ )) do\n echo -e MN\$i:\n $coin_daemon-\$i \$@\ndone")
 
@@ -259,8 +255,12 @@ function cmd_profadd() {
 
 	cp "$1" ".dupmn/$2"
 
+	local fix_path=${prof[COIN_PATH]}
 	local fix_folder=${prof[COIN_FOLDER]}
 
+	if [[ ${fix_path:${#fix_path}-1:1} != "/" ]]; then
+		sed -i "/^COIN_PATH=/s/=.*/=\"${fix_path//"/"/"\/"}\/\"/" .dupmn/$2
+	fi
 	if [[ ${fix_folder:${#fix_folder}-1:1} = "/" ]]; then
 		fix_folder=${fix_folder::-1}
 		sed -i "/^COIN_FOLDER=/s/=.*/=\"${fix_folder//"/"/"\/"}\"/" .dupmn/$2
@@ -398,9 +398,9 @@ function cmd_ipinstall() {
 		echo "Applying a tiny modification into the main masternode conf file, this only will be applied this time..."
 		local main_ip=$(conf_get_value $new_folder/$coin_config "masternodeaddr")
 		$(conf_set_value $coin_folder/$coin_config "bind" $([[ -z "$main_ip" ]] && echo $(conf_get_value $coin_folder/$coin_config "externalip") || echo "$main_ip") 1)
-		$coin_cli stop > /dev/null 2>&1
+		$exec_coin_cli stop > /dev/null 2>&1
 		sleep 5
-		$coin_daemon -daemon > /dev/null 2>&1
+		$exec_coin_daemon -daemon > /dev/null 2>&1
 	fi
 
 	configure_systemd $2
@@ -601,15 +601,15 @@ function main() {
 		coin_config="${prof[COIN_CONFIG]}"
 		rpc_port="${prof[RPC_PORT]}"
 		dup_count=$((${conf[$1]}))
-		exec_coin_daemon=$(which $coin_daemon)
-		exec_coin_cli=$(which $coin_cli)
+		exec_coin_daemon=$([[ -n ${prof[COIN_PATH]} ]] && echo ${prof[COIN_PATH]}$coin_daemon || which $coin_daemon)
+		exec_coin_cli=$([[ -n ${prof[COIN_PATH]} ]] && echo ${prof[COIN_PATH]}$coin_cli || which $coin_cli)
 
 		if [[ "$2" == "1" ]]; then
-			if [[ -z "$exec_coin_daemon" ]]; then
-				echo -e "Can't locate ${GREEN}$coin_daemon${NC}, it must be at ${CYAN}/usr/bin/${NC} or ${CYAN}/usr/local/bin/${NC}"
+			if [[ ! -f "$exec_coin_daemon" ]]; then
+				echo -e "Can't locate ${GREEN}$coin_daemon${NC}, it must be at ${CYAN}/usr/bin/${NC}, ${CYAN}/usr/local/bin/${NC} or in the defined path from \"COIN_PATH\""
 				exit
-			elif [[ -z "$exec_coin_cli" ]]; then
-				echo -e "Can't locate ${GREEN}$coin_cli${NC}, it must be at ${CYAN}/usr/bin/${NC} or ${CYAN}/usr/local/bin/${NC}"
+			elif [[ ! -f "$exec_coin_cli" ]]; then
+				echo -e "Can't locate ${GREEN}$coin_cli${NC}, it must be at ${CYAN}/usr/bin/${NC}, ${CYAN}/usr/local/bin/${NC} or in the defined path from \"COIN_PATH\""
 				exit
 			fi
 		fi
