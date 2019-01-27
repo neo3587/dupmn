@@ -95,7 +95,7 @@ Note: `dupmn install CARDbuyers` will show you also a different rpc port, this i
 Using the CARDbuyers.dmn profile as example, you can create your own profile to fit with any other coin:
 ```
 COIN_NAME="CARDbuyers"           # Name of the coin
-COIN_PATH="/usr/local/bin/"      # Location of the daemon and cli
+COIN_PATH="/usr/local/bin/"      # NOT required parameter, location of the daemon and cli (only required if they're not in /usr/local/bin/ or /usr/bin/)
 COIN_DAEMON="CARDbuyersd"        # Name of the daemon
 COIN_CLI="CARDbuyers-cli"        # Name of the cli
 COIN_FOLDER="/root/.CARDbuyers"  # Folder where the conf file and blockchain is stored
