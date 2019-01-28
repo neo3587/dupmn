@@ -1,0 +1,6 @@
+COIN_NAME="crypto4like"
+COIN_PATH="/usr/local/bin/"
+COIN_DAEMON="crypto4liked"
+COIN_CLI="crypto4like-cli"
+COIN_FOLDER="/root/.crypto4like"
+COIN_CONFIG="crypto4like.conf"
