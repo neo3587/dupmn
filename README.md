@@ -54,7 +54,7 @@ dupmn profadd CARDbuyers.dmn CARDbuyers
 ```
 Now the CARDbuyers profile is saved and can be removed if you want: `rm -rf CARDbuyers.dmn` (you won't need to run the `profadd` command anymore for this coin).
 
-Let's create 3 extra instances:
+Let's create 3 extra instances (Note that you MUST already have installed the CARDbuyers node in the VPS, the script cannot obtain the binaries from nowhere):
 ```
 dupmn install CARDbuyers 
 dupmn install CARDbuyers 
