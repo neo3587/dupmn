@@ -182,6 +182,7 @@ function install_proc() {
 	$(conf_set_value $new_folder/$coin_config "rpcport"           $new_rpc  1)
 	$(conf_set_value $new_folder/$coin_config "listen"            "0"       1)
 	$(conf_set_value $new_folder/$coin_config "masternodeprivkey" $new_key  1)
+	[[ ! $(grep "addnode=127.0.0.1" $new_folder/$coin_config) ]] && echo "addnode=127.0.0.1" >> $new_folder/$coin_config
 
 	$(make_chmod_file /usr/bin/$coin_cli-0      "#!/bin/bash\n$exec_coin_cli \$@")
     $(make_chmod_file /usr/bin/$coin_daemon-0   "#!/bin/bash\n$exec_coin_daemon \$@")
@@ -197,7 +198,7 @@ function conf_set_value() {
 	[[ $(grep -ws "^$2" "$1" | cut -d "=" -f1) == "$2" ]] && sed -i "/^$2=/s/=.*/=$3/" "$1" || ([[ "$4" == "1" ]] && echo -e "$2=$3" >> $1)
 }
 function conf_get_value() {
-        # <$1 = conf_file> | <$2 = key>| [$3 = limit]
+        # <$1 = conf_file> | <$2 = key> | [$3 = limit]
         [[ "$3" == "0" ]] && grep -ws "^$2" "$1" | cut -d "=" -f2 || grep -ws "^$2" "$1" | cut -d "=" -f2 | head $([[ -z "$3" ]] && echo "-1" || echo "-$3")
 }
 function make_chmod_file() {
