@@ -4,7 +4,6 @@
 # Source: https://github.com/neo3587/dupmn
 
 # TODO:
-# - even more extended info on list ?
 # - separated service generator script file for main node ?
 # - check ipinstall ip is same than other dupes and main MN, if true => listen = 0 and advertise
 # - dupmn ipadd <ip> <netmask> <inc> # may require hard reset
@@ -123,8 +122,9 @@ function configure_systemd() {
 	fi
 }
 function wallet_loaded() {
+	# [$1 = dup_count]
 	exec 2> /dev/null
-	[[ $(is_number $($coin_cli getblockcount)) ]] && echo "1"
+	[[ $(is_number $([[ $1 -gt 0 ]] && echo $($coin_cli-$(($1)) getblockcount) || echo $($coin_cli getblockcount))) ]] && echo "1"
 	exec 2> /dev/tty
 }
 function install_proc() {
@@ -485,7 +485,8 @@ function cmd_list() {
 	else
 		function print_dup_info() {
 			local dup_ip=$(conf_get_value $coin_folder$1/$coin_config "masternodeaddr")
-			echo -e  "  ip      : ${YELLOW}$([[ -z "$dup_ip" ]] && echo $(conf_get_value $coin_folder$1/$coin_config "externalip") || echo "$dup_ip")${NC}\
+			echo -e  "  active  : $([[ $(wallet_loaded $1) ]] && echo ${BLUE}true${NC} || echo ${RED}false${NC}) \
+			        \n  ip      : ${YELLOW}$([[ -z "$dup_ip" ]] && echo $(conf_get_value $coin_folder$1/$coin_config "externalip") || echo "$dup_ip")${NC}\
 					\n  rpcport : ${MAGENTA}$(conf_get_value $coin_folder$1/$coin_config rpcport)${NC}\
 					\n  privkey : ${GREEN}$(conf_get_value $coin_folder$1/$coin_config masternodeprivkey)${NC}"
 		}
