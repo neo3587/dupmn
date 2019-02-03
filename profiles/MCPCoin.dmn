@@ -1,0 +1,6 @@
+COIN_NAME="MCPCoin"
+COIN_PATH="/usr/local/bin/"
+COIN_DAEMON="MCPCoind"
+COIN_CLI="MCPCoin-cli"
+COIN_FOLDER="/root/.MCPCoin"
+COIN_CONFIG="MCPCoin.conf"
