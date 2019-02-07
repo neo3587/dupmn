@@ -22,6 +22,9 @@
 # ip bind options:
 #   1. bind main & dupe
 #   2. bind dupe on unused port => need to check if actually can be activated
+#
+# list ifaces: ls folders from /sys/class/net/
+#
 
 
 readonly RED='\e[1;31m'
@@ -542,13 +545,13 @@ function cmd_help() {
 			\n  - ${YELLOW}dupmn systemctlall <prof_name> <command>           ${NC}Applies the systemctl command to all the duplicated instances of the given profile name (but not the main instance)\
 			\n  - ${YELLOW}dupmn list [prof_name]                             ${NC}Shows the amount of duplicated instances of every masternode, if a profile name is provided, it lists an extended info of the profile instances\
 			\n  - ${YELLOW}dupmn swapfile <size_in_mbytes>                    ${NC}Creates, changes or deletes (if parameter is 0) a swapfile of the given size in MB to increase the virtual memory\
-			\n  - ${YELLOW}dupmn about                                        ${NC}Shows some info about the script\
+			\n  - ${YELLOW}dupmn update                                       ${NC}Checks the last version of the script and updates it if necessary\
 			\n${RED}BETA Options:${NC}\
 			\n  - ${YELLOW}dupmn ipinstall <prof_name> <ip> [copy]            ${NC}Install a new instance based on the parameters of the given profile name that will use the given IP, you can put ${YELLOW}copy${NC} as an extra parameter to copy the chain from the main node\
 			\n  - ${YELLOW}dupmn ipreinstall <prof_name> <number> <ip> [copy] ${NC}Reinstalls the specified instance with the given IP, this is just in case if the instance is giving problems, you can put ${YELLOW}copy${NC} as an extra parameter to copy the chain from the main node\
 			\n**NOTE**: ${YELLOW}<parameter>${NC} means required, ${YELLOW}[parameter]${NC} means optional."
 }
-function cmd_about() {
+function cmd_update() {
 	echo -e "===================================================\
 			 \n   ██████╗ ██╗   ██╗██████╗ ███╗   ███╗███╗   ██╗  \
 			 \n   ██╔══██╗██║   ██║██╔══██╗████╗ ████║████╗  ██║  \
@@ -561,10 +564,13 @@ function cmd_about() {
 			 \n   FAQs: ${CYAN}https://github.com/neo3587/dupmn/wiki/FAQs${NC}\
 			 \n  BTC Donations: ${YELLOW}3F6J19DmD5jowwwQbE9zxXoguGPVR716a7${NC}\
 			 \n==================================================="
-	if [[ $(diff -q <(cat <(echo "$(curl -s https://raw.githubusercontent.com/neo3587/dupmn/master/dupmn.sh)")) <(cat /usr/bin/dupmn)) ]]; then 
-		echo -e "\nUpdate available, use ${GREEN}bash dupmn_install.sh${NC} to install it\
-			 \nif you deleted the ${YELLOW}dupmn_install.sh${NC} file, get it again with:\
-			 \n${GREEN}wget -q https://raw.githubusercontent.com/neo3587/dupmn/master/dupmn_install.sh${NC}\n"
+	dupmn_update=$(curl -s https://raw.githubusercontent.com/neo3587/dupmn/master/dupmn.sh)
+	if [[ -f /usr/bin/dupmn && ! $(diff -q <(cat <(echo "$dupmn_update")) <(cat /usr/bin/dupmn)) ]]; then
+		echo -e "\n${GREEN}dupmn${NC} is already updated to the last version\n"
+	else
+		echo "$dupmn_update" > /usr/bin/dupmn
+		chmod +x /usr/bin/dupmn
+		echo -e "\n${GREEN}dupmn${NC} updated to the last version, pretty fast, right?\n"
 	fi
 }
 
@@ -775,8 +781,8 @@ function main() {
 		"help")
 			cmd_help
 			;;
-		"about")
-			cmd_about
+		"update")
+			cmd_update
 			;;
 		*)
 			echo -e "Unrecognized parameter: ${RED}$1${NC}"
