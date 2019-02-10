@@ -25,7 +25,7 @@ Then you can remove the installer script if you want: `rm -rf dupmn_install.sh`.
 
 # <a name ="commands"></a> Commands
 
-- `dupmn profadd <profile_file> <profile_name>` : Adds a profile with the given name that will be used to create duplicates of the masternode.
+- `dupmn profadd <profile_file> <new_profile_name>` : Adds a profile with the given name that will be used to create duplicates of the masternode.
 - `dupmn profdel <profile_name>` : Deletes the saved profile with the given name and uninstalls the duplicated instances that uses that profile.
 - `dupmn install <profile_name> [copy]` : Install a new instance based on the parameters of the given profile name, you can put `copy` as an extra parameter to copy the chain from the main node.
 - `dupmn reinstall <profile_name> <number> [copy]` : Reinstalls the specified instance, this is just in case if the instance is giving problems, you can put `copy` as an extra parameter to copy the chain from the main node.
@@ -40,8 +40,8 @@ Then you can remove the installer script if you want: `rm -rf dupmn_install.sh`.
 
 Commands in beta state:
 
-- `dupmn ipinstall <prof_name> <ip> [copy]` : Install a new instance based on the parameters of the given profile name that will use the given IP, you can put `copy` as an extra parameter to copy the chain from the main node.
-- `dupmn ipreinstall <prof_name> <number> <ip> [copy]` : Reinstalls the specified instance with the given IP, this is just in case if the instance is giving problems, you can put `copy` as an extra parameter to copy the chain from the main node.
+- `dupmn ipinstall <profile_name> <ip> [copy]` : Install a new instance based on the parameters of the given profile name that will use the given IP, you can put `copy` as an extra parameter to copy the chain from the main node.
+- `dupmn ipreinstall <profile_name> <number> <ip> [copy]` : Reinstalls the specified instance with the given IP, this is just in case if the instance is giving problems, you can put `copy` as an extra parameter to copy the chain from the main node.
 
 Note: `<parameter>` means required, `[parameter]` means optional.
 
@@ -122,4 +122,5 @@ BCARD Donations: BQmTwK685ajop8CFY6bWVeM59rXgqZCTJb
 SNO Donations:   SZ4pQpuqq11EG7dw6qjgqSs5tGq3iTw2uZ
 CFL Donations:   c4fuTdr7Z7wZy8WQULmuAdfPDReWfDcoE5
 C4L Donations:   CLVaYLHDHuxcpybt1pModcYV4DZMudGWnc
+MCPC Donations:  MCwe8WxWNmcZL1CpdpG3yuudGYVphmTSLE
 ```
