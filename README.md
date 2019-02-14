@@ -27,9 +27,10 @@ Then you can remove the installer script if you want: `rm -rf dupmn_install.sh`.
 
 - `dupmn profadd <profile_file> <new_profile_name>` : Adds a profile with the given name that will be used to create duplicates of the masternode.
 - `dupmn profdel <profile_name>` : Deletes the saved profile with the given name and uninstalls the duplicated instances that uses that profile.
-- `dupmn install <profile_name> [copy]` : Install a new instance based on the parameters of the given profile name, you can put `copy` as an extra parameter to copy the chain from the main node.
-- `dupmn reinstall <profile_name> <number> [copy]` : Reinstalls the specified instance, this is just in case if the instance is giving problems, you can put `copy` as an extra parameter to copy the chain from the main node.
+- `dupmn install <profile_name>` : Install a new instance based on the parameters of the given profile name.
+- `dupmn reinstall <profile_name> <number>` : Reinstalls the specified instance, this is just in case if the instance is giving problems.
 - `dupmn uninstall <profile_name> <number>` : Uninstall the specified instance of the given profile name, you can put `all` instead of a number to uninstall all the duplicated instances.
+- `dupmn bootstrap <profile_name> <number> [number]` : Copies the stored chain from the main node to a dupe or optionally from one dupe to another one.
 - `dupmn iplist` : Shows your current IPv4 and IPv6 addresses.
 - `dupmn rpcchange <profile_name> <number> [port]` : Changes the rpc port of the given instance number, this is only in case that by chance it causes a conflict with another application that uses the same port (if no port is provided, it will automatically find any free port).
 - `dupmn systemctlall <profile_name> <command>` : Applies the systemctl command to all services created with the given profile (won't affect the main node).
@@ -40,8 +41,8 @@ Then you can remove the installer script if you want: `rm -rf dupmn_install.sh`.
 
 Commands in beta state:
 
-- `dupmn ipinstall <profile_name> <ip> [copy]` : Install a new instance based on the parameters of the given profile name that will use the given IP, you can put `copy` as an extra parameter to copy the chain from the main node.
-- `dupmn ipreinstall <profile_name> <number> <ip> [copy]` : Reinstalls the specified instance with the given IP, this is just in case if the instance is giving problems, you can put `copy` as an extra parameter to copy the chain from the main node.
+- `dupmn ipinstall <profile_name> <ip>` : Install a new instance based on the parameters of the given profile name that will use the given IP.
+- `dupmn ipreinstall <profile_name> <number> <ip>` : Reinstalls the specified instance with the given IP, this is just in case if the instance is giving problems.
 
 Note: `<parameter>` means required, `[parameter]` means optional.
 
