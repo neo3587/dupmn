@@ -47,6 +47,7 @@ coin_cli=""
 coin_folder=""
 coin_config=""
 rpc_port=""
+coin_service=""
 dup_count=""
 exec_coin_cli=""
 exec_coin_daemon=""
@@ -152,7 +153,7 @@ function install_proc() {
 		exit
 	fi
 
-	new_key=$($coin_cli masternode genkey)
+	new_key=$($coin_cli createmasternodekey)
 	new_rpc=$(conf_get_value .dupmn/$1 "RPC_PORT")
 	new_rpc=$([[ -n $new_rpc ]] && echo $new_rpc || conf_get_value $coin_folder/$coin_config "rpcport")
 	new_rpc=$(find_port $(($([[ -n $new_rpc ]] && echo $new_rpc || echo "1023")+1)))
@@ -287,9 +288,9 @@ function cmd_install() {
 			\nNo start on reboot: ${RED}systemctl disable $coin_name-$2.service${NC}\
 			\n(Currently configured to start on reboot)\
 			\nDUPLICATED MASTERNODE PRIVATEKEY is: ${GREEN}$new_key${NC}\
-			\nTo check the masternode status just use: ${GREEN}$coin_cli-$2 masternode status${NC} (Wait until the new masternode is synced with the blockchain before trying to start it).\
+			\nTo check the masternode status just use: ${GREEN}$coin_cli-$2 getmasternodestatus${NC} (Wait until the new masternode is synced with the blockchain before trying to start it).\
 			\nNOTE 1: ${GREEN}$coin_cli-0${NC} and ${GREEN}$coin_daemon-0${NC} are just a reference to the 'main masternode', not a created one with dupmn.\
-			\nNOTE 2: You can use ${GREEN}$coin_cli-all [parameters]${NC} and ${GREEN}$coin_daemon-all [parameters]${NC} to apply the parameters on all masternodes. Example: ${GREEN}$coin_cli-all masternode status${NC}\
+			\nNOTE 2: You can use ${GREEN}$coin_cli-all [parameters]${NC} and ${GREEN}$coin_daemon-all [parameters]${NC} to apply the parameters on all masternodes. Example: ${GREEN}$coin_cli-all getmasternodestatus${NC}\
 			\n==================================================================================================="
 }
 function cmd_reinstall() {
@@ -396,9 +397,9 @@ function cmd_ipinstall() {
 			\nNo start on reboot: ${RED}systemctl disable $coin_name-$2.service${NC}\
 			\n(Currently configured to start on reboot)\
 			\nDUPLICATED MASTERNODE PRIVATEKEY is: ${GREEN}$new_key${NC}\
-			\nTo check the masternode status just use: ${GREEN}$coin_cli-$2 masternode status${NC} (Wait until the new masternode is synced with the blockchain before trying to start it).\
+			\nTo check the masternode status just use: ${GREEN}$coin_cli-$2 getmasternodestatus${NC} (Wait until the new masternode is synced with the blockchain before trying to start it).\
 			\nNOTE 1: ${GREEN}$coin_cli-0${NC} and ${GREEN}$coin_daemon-0${NC} are just a reference to the 'main masternode', not a created one with dupmn.\
-			\nNOTE 2: You can use ${GREEN}$coin_cli-all [parameters]${NC} and ${GREEN}$coin_daemon-all [parameters]${NC} to apply the parameters on all masternodes. Example: ${GREEN}$coin_cli-all masternode status${NC}\
+			\nNOTE 2: You can use ${GREEN}$coin_cli-all [parameters]${NC} and ${GREEN}$coin_daemon-all [parameters]${NC} to apply the parameters on all masternodes. Example: ${GREEN}$coin_cli-all getmasternodestatus${NC}\
 			\n==================================================================================================="
 }
 function cmd_iplist() {
@@ -430,11 +431,24 @@ function cmd_bootstrap() {
 	if [[ -z "$2" && ! $(wallet_loaded) ]]; then 
 		copy_chain "" $1
 	elif [[ -z "$2" && $(wallet_loaded) ]]; then
+		if [[ -n "$coin_service" ]]; then
+			if [[ -f /etc/systemd/system/$coin_service ]]; then
+				systemctl stop $coin_service
+				[[ $($exec_coin_cli stop 2> /dev/null) ]] && sleep 2
+				copy_chain "" $1
+				systemctl start $coin_service
+				exit
+			else
+				echo -e "${MAGENTA}Main MN service ($coin_service) not found in /etc/systemd/system${NC}"
+			fi
+		else
+			echo -e "${MAGENTA}Main MN service not detected in the profile, can't temporary stop the main node to copy the chain${NC}"
+		fi
 		echo -e "Main masternode must be stopped to copy the chain, use ${GREEN}$coin_cli stop${NC} to stop the main node, optionally you can put a extra number as parameter to make a copy of another dupe instead"
 		echo -e "NOTE: Some main nodes may need to stop a systemd service instead, like ${GREEN}systemctl stop $coin_name.service${NC}"
 	elif [[ $1 -eq $2 ]]; then
 		echo "You cannot use the same node for the chain copy... that doesn't makes sense"
-	else 
+	else
 		systemctl stop $coin_name-$2.service
 		[[ $($exec_coin_cli-$2 stop 2> /dev/null) ]] && sleep 2
 		copy_chain $2 $1
@@ -473,6 +487,16 @@ function cmd_systemctlall() {
 	# <$1 = profile_name> | <$2 = command>
 
 	trap '' 2
+	if [[ -n "$coin_service" ]]; then
+		if [[ -f /etc/systemd/system/$coin_service ]]; then
+			echo -e "${CYAN}systemctl $2 $coin_service${NC}"
+			systemctl $2 $coin_service
+		else
+			echo -e "${MAGENTA}Main MN service ($coin_service) not found in /etc/systemd/system${NC}"
+		fi
+	else
+		echo -e "${MAGENTA}Main MN service not detected in the profile, applying command to dupes only${NC}"
+	fi
 	for (( i=1; i<=$dup_count; i++ )); do
 		echo -e "${CYAN}systemctl $2 $coin_name-$i.service${NC}"
 		systemctl $2 $coin_name-$i.service
@@ -579,6 +603,7 @@ function cmd_update() {
 		chmod +x /usr/bin/dupmn
 		echo -e "\n${GREEN}dupmn${NC} updated to the last version, pretty fast, right?\n"
 	fi
+	exit
 }
 
 
@@ -616,6 +641,7 @@ function main() {
 		coin_folder="${prof[COIN_FOLDER]}"
 		coin_config="${prof[COIN_CONFIG]}"
 		rpc_port="${prof[RPC_PORT]}"
+		coin_service="${prof[COIN_SERVICE]}"
 		dup_count=$((${conf[$1]}))
 		exec_coin_daemon=$([[ -n ${prof[COIN_PATH]} ]] && echo ${prof[COIN_PATH]}$coin_daemon || which $coin_daemon)
 		exec_coin_cli=$([[ -n ${prof[COIN_PATH]} ]] && echo ${prof[COIN_PATH]}$coin_cli || which $coin_cli)
@@ -743,7 +769,7 @@ function main() {
 				echo -e "${YELLOW}dupmn bootstrap <prof_name> <number> [number]${NC} requires a profile name and a number as parameters"
 				exit
 			fi
-			load_profile "$2"
+			load_profile "$2" "1"
 			instance_valid "$3"
 			if [[ ! -z "$4" ]]; then
 				instance_valid "$4"
