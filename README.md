@@ -30,10 +30,10 @@ Then you can remove the installer script if you want: `rm -rf dupmn_install.sh`.
 - `dupmn install <profile_name>` : Install a new instance based on the parameters of the given profile name.
 - `dupmn reinstall <profile_name> <number>` : Reinstalls the specified instance, this is just in case if the instance is giving problems.
 - `dupmn uninstall <profile_name> <number>` : Uninstall the specified instance of the given profile name, you can put `all` instead of a number to uninstall all the duplicated instances.
-- `dupmn bootstrap <profile_name> <number> [number]` : Copies the stored chain from the main node to a dupe or optionally from one dupe to another one.
+- `dupmn bootstrap <profile_name> <number> [number]` : Copies the stored chain from the main node to a dupe or optionally from one dupe to another one (if copying from main node, it must be stopped or the profile must have the COIN_SERVICE parameter).
 - `dupmn iplist` : Shows your current IPv4 and IPv6 addresses.
 - `dupmn rpcchange <profile_name> <number> [port]` : Changes the rpc port of the given instance number, this is only in case that by chance it causes a conflict with another application that uses the same port (if no port is provided, it will automatically find any free port).
-- `dupmn systemctlall <profile_name> <command>` : Applies the systemctl command to all services created with the given profile (won't affect the main node).
+- `dupmn systemctlall <profile_name> <command>` : Applies the systemctl command to all services created with the given profile (will only affect the main node too if the profile haves the COIN_SERVICE parameter).
 - `dupmn list` : Shows the amount of duplicated instances of every masternode, if a profile name is provided, it lists an extended info of the profile instances.
 - `dupmn swapfile <size_in_mbytes>` : Creates/changes or deletes (if value is 0) a swapfile to increase the virtual memory, allowing to fit more masternodes in the same VPS, recommended size is 150 MB for each masternode (example: 3 masternodes => `dupmn swapfile 450`), note that some masternodes might be more 'RAM hungry'.
 - `dupmn help` : Just shows the available commands in the console.
@@ -95,13 +95,14 @@ Note: `dupmn install CARDbuyers` will show you also a different rpc port, this i
 
 Using the CARDbuyers.dmn profile as example, you can create your own profile to fit with any other coin:
 ```
-COIN_NAME="CARDbuyers"           # Name of the coin
-COIN_PATH="/usr/local/bin/"      # NOT required parameter, location of the daemon and cli (only required if they're not in /usr/local/bin/ or /usr/bin/)
-COIN_DAEMON="CARDbuyersd"        # Name of the daemon
-COIN_CLI="CARDbuyers-cli"        # Name of the cli
-COIN_FOLDER="/root/.CARDbuyers"  # Folder where the conf file and blockchain is stored
-COIN_CONFIG="CARDbuyers.conf"    # Name of the conf file
-RPC_PORT=48451                   # NOT required parameter, you can optionally add this for coins that doesn't have the rpcport parameter in their .conf file (otherwise dupmn will try to use any free port starting from 1024).
+COIN_NAME="CARDbuyers"             # Name of the coin
+COIN_PATH="/usr/local/bin/"        # NOT required parameter, location of the daemon and cli (only required if they're not in /usr/local/bin/ or /usr/bin/)
+COIN_DAEMON="CARDbuyersd"          # Name of the daemon
+COIN_CLI="CARDbuyers-cli"          # Name of the cli
+COIN_FOLDER="/root/.CARDbuyers"    # Folder where the conf file and blockchain is stored
+COIN_CONFIG="CARDbuyers.conf"      # Name of the conf file
+RPC_PORT=48451                     # NOT required parameter, you can optionally add this for coins that doesn't have the rpcport parameter in their .conf file (otherwise dupmn will try to use any free port starting from 1024).
+COIN_SERVICE="CARDbuyers.service"  # NOT required parameter, if you have a service for the main node, add this parameter for the systemctlall and bootstrap commands
 ```
 As with the <b>Usage example</b>, you just need to type these commands to create a new duplicated masternode:
 ```
