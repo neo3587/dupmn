@@ -4,7 +4,6 @@
 # Source: https://github.com/neo3587/dupmn
 
 # TODO:
-# - separated service generator script file for main node ?
 # - check ipinstall ip is same than other dupes and main MN, if true => listen = 0 and advertise
 # - dupmn ipadd <ip> <netmask> <inc> # may require hard reset
 # - dupmn ipdel <ip> # not main one
@@ -25,10 +24,6 @@
 #
 # list ifaces: ls folders from /sys/class/net/
 #
-# install_proc:
-#  if main open or any dupe => genkey
-#  else open dupe => genkey => stop & apply => restart
-
 
 
 readonly RED='\e[1;31m'
@@ -149,11 +144,16 @@ function install_proc() {
 	new_folder="$coin_folder$2"
 
 	if [[ ! $(wallet_loaded) ]]; then
-		echo -e "Main masternode must be running to create a duplicate masternode, use ${GREEN}$coin_daemon -daemon${NC} to start the main masternode"
-		exit
+		for (( i=1; i<=$dup_count; i++ )); do
+			if [[ $(wallet_loaded $i) ]]; then
+				new_key=$($coin_cli-$i createmasternodekey)
+				break
+			fi
+		done
+	else
+		new_key=$($exec_coin_cli createmasternodekey)
 	fi
-
-	new_key=$($coin_cli createmasternodekey)
+	
 	new_rpc=$(conf_get_value .dupmn/$1 "RPC_PORT")
 	new_rpc=$([[ -n $new_rpc ]] && echo $new_rpc || conf_get_value $coin_folder/$coin_config "rpcport")
 	new_rpc=$(find_port $(($([[ -n $new_rpc ]] && echo $new_rpc || echo "1023")+1)))
@@ -181,14 +181,29 @@ function install_proc() {
 	$(make_chmod_file /usr/bin/$coin_daemon-all "#!/bin/bash\nfor (( i=0; i<=$2; i++ )) do\n echo -e MN\$i:\n $coin_daemon-\$i \$@\ndone")
 
 	$(conf_set_value .dupmn/dupmn.conf $1 $2 1)
+
+	if [[ -z "$new_key" ]]; then 
+		# main and dupes were stopped on createmasternodekey
+		echo "Couldn't find a opened $coin_name wallet opened to generate a private key, temporary opening the new wallet to generate a key"
+		$(conf_set_value $new_folder/$coin_config "masternode"        "0"      1)
+		$coin_daemon-$2 -daemon
+		while [[ ! $(wallet_loaded $2) ]]; do
+			sleep 1
+		done
+		new_key=$($coin_cli-$2 createmasternodekey)
+		$(conf_set_value $new_folder/$coin_config "masternodeprivkey" $new_key 1)
+		$(conf_set_value $new_folder/$coin_config "masternode"        "1"      1)
+		$coin_cli-$2 stop
+		sleep 3
+	fi
 }
 function conf_set_value() {
 	# <$1 = conf_file> | <$2 = key> | <$3 = value> | [$4 = force_create]
 	[[ $(grep -ws "^$2" "$1" | cut -d "=" -f1) == "$2" ]] && sed -i "/^$2=/s/=.*/=$3/" "$1" || ([[ "$4" == "1" ]] && echo -e "$2=$3" >> $1)
 }
 function conf_get_value() {
-    # <$1 = conf_file> | <$2 = key> | [$3 = limit]
-    [[ "$3" == "0" ]] && grep -ws "^$2" "$1" | cut -d "=" -f2 || grep -ws "^$2" "$1" | cut -d "=" -f2 | head $([[ -z "$3" ]] && echo "-1" || echo "-$3")
+	# <$1 = conf_file> | <$2 = key> | [$3 = limit]
+	[[ "$3" == "0" ]] && grep -ws "^$2" "$1" | cut -d "=" -f2 || grep -ws "^$2" "$1" | cut -d "=" -f2 | head $([[ -z "$3" ]] && echo "-1" || echo "-$3")
 }
 function make_chmod_file() {
 	# <$1 = file> | <$2 = content>
@@ -518,8 +533,11 @@ function cmd_list() {
 	else
 		function print_dup_info() {
 			local dup_ip=$(conf_get_value $coin_folder$1/$coin_config "masternodeaddr")
-			echo -e  "  online  : $([[ $(wallet_loaded $1) ]] && echo ${BLUE}true${NC} || echo ${RED}false${NC}) \
-			        \n  ip      : ${YELLOW}$([[ -z "$dup_ip" ]] && echo $(conf_get_value $coin_folder$1/$coin_config "externalip") || echo "$dup_ip")${NC}\
+			local online=$([[ $(wallet_loaded $1) ]] && echo 1 || echo 0)
+			local mnstatus=$([[ $online == 1 ]] && echo $([[ -z "$1" ]] && $exec_coin_cli masternodedebug || $coin_cli-$1 masternodedebug))
+			echo -e  "  online  : $([[ $online = 1 ]] && echo ${BLUE}true${NC} || echo ${RED}false${NC})\
+					$([[ -n $mnstatus ]] && echo "\n  status  : "${mnstatus//[$'\r\n']})\
+					\n  ip      : ${YELLOW}$([[ -z "$dup_ip" ]] && echo $(conf_get_value $coin_folder$1/$coin_config "externalip") || echo "$dup_ip")${NC}\
 					\n  rpcport : ${MAGENTA}$(conf_get_value $coin_folder$1/$coin_config rpcport)${NC}\
 					\n  privkey : ${GREEN}$(conf_get_value $coin_folder$1/$coin_config masternodeprivkey)${NC}"
 		}
@@ -609,7 +627,7 @@ function cmd_update() {
 
 
 function main() {
-	
+
 	function load_profile() {
 		# <$1 = profile_name> | [$2 = check_exec]
 
