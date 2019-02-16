@@ -130,6 +130,13 @@ function wallet_loaded() {
 	[[ $(is_number $([[ $1 -gt 0 ]] && echo $($coin_cli-$(($1)) getblockcount) || echo $($coin_cli getblockcount))) ]] && echo "1"
 	exec 2> /dev/tty
 }
+function try_cmd() {
+	# <$1 = exec> | <$2 = try> | <$3 = catch>
+	exec 2> /dev/null
+	local check=$($1 $2)
+	[[ -n "$check" ]] && echo $check || echo $($1 $3)
+	exec 2> /dev/tty
+}
 function install_proc() {
 	# <$1 = profile_name> | <$2 = instance_number>
 
@@ -146,12 +153,12 @@ function install_proc() {
 	if [[ ! $(wallet_loaded) ]]; then
 		for (( i=1; i<=$dup_count; i++ )); do
 			if [[ $(wallet_loaded $i) ]]; then
-				new_key=$($coin_cli-$i createmasternodekey)
+				new_key=$(try_cmd $coin_cli-$i "createmasternodekey" "masternode genkey")
 				break
 			fi
 		done
 	else
-		new_key=$($exec_coin_cli createmasternodekey)
+		new_key=$(try_cmd $exec_coin_cli "createmasternodekey" "masternode genkey")
 	fi
 	
 	new_rpc=$(conf_get_value .dupmn/$1 "RPC_PORT")
@@ -190,7 +197,7 @@ function install_proc() {
 		while [[ ! $(wallet_loaded $2) ]]; do
 			sleep 1
 		done
-		new_key=$($coin_cli-$2 createmasternodekey)
+		new_key=$(try_cmd $coin_cli-$2 "createmasternodekey" "masternode genkey")
 		$(conf_set_value $new_folder/$coin_config "masternodeprivkey" $new_key 1)
 		$(conf_set_value $new_folder/$coin_config "masternode"        "1"      1)
 		$coin_cli-$2 stop
@@ -303,9 +310,9 @@ function cmd_install() {
 			\nNo start on reboot: ${RED}systemctl disable $coin_name-$2.service${NC}\
 			\n(Currently configured to start on reboot)\
 			\nDUPLICATED MASTERNODE PRIVATEKEY is: ${GREEN}$new_key${NC}\
-			\nTo check the masternode status just use: ${GREEN}$coin_cli-$2 getmasternodestatus${NC} (Wait until the new masternode is synced with the blockchain before trying to start it).\
+			\nTo check the masternode status just use: ${GREEN}$coin_cli-$2 masternode status${NC} (Wait until the new masternode is synced with the blockchain before trying to start it).\
 			\nNOTE 1: ${GREEN}$coin_cli-0${NC} and ${GREEN}$coin_daemon-0${NC} are just a reference to the 'main masternode', not a created one with dupmn.\
-			\nNOTE 2: You can use ${GREEN}$coin_cli-all [parameters]${NC} and ${GREEN}$coin_daemon-all [parameters]${NC} to apply the parameters on all masternodes. Example: ${GREEN}$coin_cli-all getmasternodestatus${NC}\
+			\nNOTE 2: You can use ${GREEN}$coin_cli-all [parameters]${NC} and ${GREEN}$coin_daemon-all [parameters]${NC} to apply the parameters on all masternodes. Example: ${GREEN}$coin_cli-all masternode status${NC}\
 			\n==================================================================================================="
 }
 function cmd_reinstall() {
@@ -412,9 +419,9 @@ function cmd_ipinstall() {
 			\nNo start on reboot: ${RED}systemctl disable $coin_name-$2.service${NC}\
 			\n(Currently configured to start on reboot)\
 			\nDUPLICATED MASTERNODE PRIVATEKEY is: ${GREEN}$new_key${NC}\
-			\nTo check the masternode status just use: ${GREEN}$coin_cli-$2 getmasternodestatus${NC} (Wait until the new masternode is synced with the blockchain before trying to start it).\
+			\nTo check the masternode status just use: ${GREEN}$coin_cli-$2 masternode status${NC} (Wait until the new masternode is synced with the blockchain before trying to start it).\
 			\nNOTE 1: ${GREEN}$coin_cli-0${NC} and ${GREEN}$coin_daemon-0${NC} are just a reference to the 'main masternode', not a created one with dupmn.\
-			\nNOTE 2: You can use ${GREEN}$coin_cli-all [parameters]${NC} and ${GREEN}$coin_daemon-all [parameters]${NC} to apply the parameters on all masternodes. Example: ${GREEN}$coin_cli-all getmasternodestatus${NC}\
+			\nNOTE 2: You can use ${GREEN}$coin_cli-all [parameters]${NC} and ${GREEN}$coin_daemon-all [parameters]${NC} to apply the parameters on all masternodes. Example: ${GREEN}$coin_cli-all masternode status${NC}\
 			\n==================================================================================================="
 }
 function cmd_iplist() {
@@ -534,7 +541,7 @@ function cmd_list() {
 		function print_dup_info() {
 			local dup_ip=$(conf_get_value $coin_folder$1/$coin_config "masternodeaddr")
 			local online=$([[ $(wallet_loaded $1) ]] && echo 1 || echo 0)
-			local mnstatus=$([[ $online == 1 ]] && echo $([[ -z "$1" ]] && $exec_coin_cli masternodedebug || $coin_cli-$1 masternodedebug))
+			local mnstatus=$([[ $online == 1 ]] && echo $([[ -z "$1" ]] && try_cmd $exec_coin_cli "masternodedebug" "masternode debug" || try_cmd $coin_cli-$1 "masternodedebug" "masternode debug"))
 			echo -e  "  online  : $([[ $online = 1 ]] && echo ${BLUE}true${NC} || echo ${RED}false${NC})\
 					$([[ -n $mnstatus ]] && echo "\n  status  : "${mnstatus//[$'\r\n']})\
 					\n  ip      : ${YELLOW}$([[ -z "$dup_ip" ]] && echo $(conf_get_value $coin_folder$1/$coin_config "externalip") || echo "$dup_ip")${NC}\
