@@ -241,7 +241,7 @@ function netmask_cidr() {
 
 
 function cmd_profadd() {
-	# <$1 = profile_file> | <$2 = profile_name>
+	# <$1 = profile_file> | [$2 = profile_name]
 
 	local -A prof=$(get_conf $1)
 	local CMD_ARRAY=(COIN_NAME COIN_DAEMON COIN_CLI COIN_FOLDER COIN_CONFIG)
@@ -256,29 +256,31 @@ function cmd_profadd() {
 		fi
 	done
 
-	if [[ "$2" = "dupmn.conf" ]]; then 
+	local prof_name=$([[ -z "$2" ]] && echo ${prof[COIN_NAME]} || echo "$2")
+
+	if [[ "$prof_name" = "dupmn.conf" ]]; then 
 		echo -e "From the infinite amount of possible names for the profile and you had to choose the only one that you can't use... for god sake..."
 		exit
 	fi
 
 	[[ ! -d ".dupmn" ]] && mkdir ".dupmn"
 	[[ ! -f ".dupmn/dupmn.conf" ]] && touch ".dupmn/dupmn.conf"
-	$(conf_set_value .dupmn/dupmn.conf $2 0 1)
+	[[ $(conf_get_value .dupmn/dupmn.conf $prof_name) ]] || $(conf_set_value .dupmn/dupmn.conf $prof_name 0 1)
 
-	cp "$1" ".dupmn/$2"
+	cp "$1" ".dupmn/$prof_name"
 
 	local fix_path=${prof[COIN_PATH]}
 	local fix_folder=${prof[COIN_FOLDER]}
 
 	if [[ ${fix_path:${#fix_path}-1:1} != "/" ]]; then
-		sed -i "/^COIN_PATH=/s/=.*/=\"${fix_path//"/"/"\/"}\/\"/" .dupmn/$2
+		sed -i "/^COIN_PATH=/s/=.*/=\"${fix_path//"/"/"\/"}\/\"/" .dupmn/$prof_name
 	fi
 	if [[ ${fix_folder:${#fix_folder}-1:1} = "/" ]]; then
 		fix_folder=${fix_folder::-1}
-		sed -i "/^COIN_FOLDER=/s/=.*/=\"${fix_folder//"/"/"\/"}\"/" .dupmn/$2
+		sed -i "/^COIN_FOLDER=/s/=.*/=\"${fix_folder//"/"/"\/"}\"/" .dupmn/$prof_name
 	fi
 
-	echo -e "${BLUE}$2${NC} profile successfully added, use ${GREEN}dupmn install $2${NC} to create a new instance of the masternode"
+	echo -e "${BLUE}$prof_name${NC} profile successfully added, use ${GREEN}dupmn install $prof_name${NC} to create a new instance of the masternode"
 }
 function cmd_profdel() {
 	# <$1 = profile_name>
@@ -590,7 +592,7 @@ function cmd_swapfile() {
 }
 function cmd_help() {
 	echo -e "Options:\
-			\n  - ${YELLOW}dupmn profadd <prof_file> <prof_name>         ${NC}Adds a profile with the given name that will be used to create duplicates of the masternode\
+			\n  - ${YELLOW}dupmn profadd <prof_file> [prof_name]         ${NC}Adds a profile that will be used to create duplicates of the masternode, it will use the COIN_NAME parameter as name if a prof_name is not provided\
 			\n  - ${YELLOW}dupmn profdel <prof_name>                     ${NC}Deletes the given profile name, this will uninstall too any duplicated instance that uses this profile\
 			\n  - ${YELLOW}dupmn install <prof_name>                     ${NC}Install a new instance based on the parameters of the given profile name\
 			\n  - ${YELLOW}dupmn reinstall <prof_name> <number>          ${NC}Reinstalls the specified instance, this is just in case if the instance is giving problems\
@@ -745,8 +747,8 @@ function main() {
 
 	case "$1" in
 		"profadd")
-			if [[ -z "$3" ]]; then
-				echo -e "${YELLOW}dupmn profadd <prof_file> <coin_name>${NC} requires a profile file and a new profile name as parameters"
+			if [[ -z "$2" ]]; then
+				echo -e "${YELLOW}dupmn profadd <prof_file> [prof_name]${NC} requires a profile file and optionally a new profile name as parameters"
 				exit
 			fi
 			cmd_profadd "$2" "$3"
