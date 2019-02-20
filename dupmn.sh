@@ -4,7 +4,6 @@
 # Source: https://github.com/neo3587/dupmn
 
 # TODO:
-# - check ipinstall ip is same than other dupes and main MN, if true => listen = 0 and advertise
 # - dupmn ipadd <ip> <netmask> <inc> # may require hard reset
 # - dupmn ipdel <ip> # not main one
 # options (all of them requires a lot of debug for ipadd and ipdel):
@@ -125,9 +124,18 @@ function configure_systemd() {
 	fi
 }
 function wallet_loaded() {
-	# [$1 = dup_count]
+	# [$1 = dup_count] | [$2 = wait_timeout]
 	exec 2> /dev/null
-	[[ $(is_number $([[ $1 -gt 0 ]] && echo $($coin_cli-$(($1)) getblockcount) || echo $($coin_cli getblockcount))) ]] && echo "1"
+	function check_wallet_response() {
+		[[ $(is_number $([[ $1 -gt 0 ]] && echo $($coin_cli-$(($1)) getblockcount) || echo $($coin_cli getblockcount))) ]] && echo "1"
+	}
+	if [[ -z "$2" ]]; then
+		check_wallet_response $1
+	else
+		for (( i=0; i<=$2; i++)); do
+			[[ $(check_wallet_response $1) ]] && break || sleep 1
+		done
+	fi
 	exec 2> /dev/tty
 }
 function try_cmd() {
@@ -194,9 +202,7 @@ function install_proc() {
 		echo "Couldn't find a opened $coin_name wallet opened to generate a private key, temporary opening the new wallet to generate a key"
 		$(conf_set_value $new_folder/$coin_config "masternode"        "0"      1)
 		$coin_daemon-$2 -daemon
-		while [[ ! $(wallet_loaded $2) ]]; do
-			sleep 1
-		done
+		wallet_loaded $2 20
 		new_key=$(try_cmd $coin_cli-$2 "createmasternodekey" "masternode genkey")
 		$(conf_set_value $new_folder/$coin_config "masternodeprivkey" $new_key 1)
 		$(conf_set_value $new_folder/$coin_config "masternode"        "1"      1)
@@ -425,6 +431,12 @@ function cmd_ipinstall() {
 			\nNOTE 1: ${GREEN}$coin_cli-0${NC} and ${GREEN}$coin_daemon-0${NC} are just a reference to the 'main masternode', not a created one with dupmn.\
 			\nNOTE 2: You can use ${GREEN}$coin_cli-all [parameters]${NC} and ${GREEN}$coin_daemon-all [parameters]${NC} to apply the parameters on all masternodes. Example: ${GREEN}$coin_cli-all masternode status${NC}\
 			\n==================================================================================================="
+	for (( i=0; i<=$dup_count; i++ )); do
+		if [[ $i -ne $2 && $(conf_get_value $coin_folder$([[ $i -eq 0 ]] && echo "" | echo $i) "bind") -eq $ip ]]; then
+			echo -e "${RED}WARNING:${NC} looks like that the ${BLUE}$([[ $i -eq 0 ]] && echo "main node" || echo "dupe $i")${NC} have uses the same IP, it may cause this dupe to not work"
+			break;
+		fi
+	done
 }
 function cmd_iplist() {
 	echo -e "${GREEN}IPv4:${NC}"
@@ -442,10 +454,10 @@ function cmd_bootstrap() {
 	function copy_chain() {
 		# <$1 = origin> | <$2 = destiny>
 		systemctl stop $coin_name-$2.service
-		[[ $($exec_coin_cli-$2 stop 2> /dev/null) ]] && sleep 2
+		[[ $($exec_coin_cli-$2 stop 2> /dev/null) ]] && sleep 3
 		echo "Copying node chain... (may take a while)"
-		for x in $(ls $coin_folder$2/ | grep -v ".conf\|wallet.dat"); do 
-			rm -rf $coin_folder$2/$x; 
+		for x in $(ls $coin_folder$2/ | grep -v ".conf\|wallet.dat"); do
+			rm -rf $coin_folder$2/$x;
 		done
 		rsync -adm --ignore-existing --info=progress2 $coin_folder$1/ $coin_folder$2/
 		sleep 1
@@ -458,9 +470,11 @@ function cmd_bootstrap() {
 		if [[ -n "$coin_service" ]]; then
 			if [[ -f /etc/systemd/system/$coin_service ]]; then
 				systemctl stop $coin_service
-				[[ $($exec_coin_cli stop 2> /dev/null) ]] && sleep 2
+				[[ $($exec_coin_cli stop 2> /dev/null) ]] && sleep 3
 				copy_chain "" $1
 				systemctl start $coin_service
+				echo -e "Reactivating main node..."
+				wallet_loaded "" 20
 				exit
 			else
 				echo -e "${MAGENTA}Main MN service ($coin_service) not found in /etc/systemd/system${NC}"
@@ -468,8 +482,13 @@ function cmd_bootstrap() {
 		else
 			echo -e "${MAGENTA}Main MN service not detected in the profile, can't temporary stop the main node to copy the chain${NC}"
 		fi
-		echo -e "Main masternode must be stopped to copy the chain, use ${GREEN}$coin_cli stop${NC} to stop the main node, optionally you can put a extra number as parameter to make a copy of another dupe instead"
-		echo -e "NOTE: Some main nodes may need to stop a systemd service instead, like ${GREEN}systemctl stop $coin_name.service${NC}"
+		if [[ $dup_count -ge 2 ]]; then
+			echo -e "Trying to use the first dupe available for the bootstrap..."
+			cmd_bootstrap $1 $([[ $1 -eq 1 ]] && echo 2 || echo 1)
+		else
+			echo -e "Main masternode must be stopped to copy the chain, use ${GREEN}$coin_cli stop${NC} to stop the main node, optionally you can put a extra number as parameter to make a copy of another dupe instead"
+			echo -e "NOTE: Some main nodes may need to stop a systemd service instead, like ${GREEN}systemctl stop $coin_name.service${NC}"
+		fi
 	elif [[ $1 -eq $2 ]]; then
 		echo "You cannot use the same node for the chain copy... that doesn't makes sense"
 	else
@@ -477,6 +496,8 @@ function cmd_bootstrap() {
 		[[ $($exec_coin_cli-$2 stop 2> /dev/null) ]] && sleep 2
 		copy_chain $2 $1
 		systemctl start $coin_name-$2.service
+		echo -e "Reactivating dupe $2..."
+		wallet_loaded $2 20
 	fi
 }
 function cmd_rpcchange() {
