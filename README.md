@@ -91,6 +91,8 @@ Using `dupmn install CARDbuyers` will show you the masternode private key for th
 
 Note: `dupmn install CARDbuyers` will show you also a different rpc port, this is NOT the port that you have to add in the `masternode.conf` file, every masternode will use the same port (48451 in case of CARDbuyers).
 
+Note 2: You can see some image examples at <a href="https://github.com/neo3587/dupmn/wiki/Image-Examples">Image Examples</a>
+
 # <a name ="profile-creation"></a> Profile creation
 
 Using the CARDbuyers.dmn profile as example, you can create your own profile to fit with any other coin:
