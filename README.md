@@ -27,8 +27,12 @@ Then you can remove the installer script if you want: `rm -rf dupmn_install.sh`.
 
 - `dupmn profadd <profile_file> <new_profile_name>` : Adds a profile with the given name that will be used to create duplicates of the masternode.
 - `dupmn profdel <profile_name>` : Deletes the saved profile with the given name and uninstalls the duplicated instances that uses that profile.
-- `dupmn install <profile_name>` : Install a new instance based on the parameters of the given profile name.
-- `dupmn reinstall <profile_name> <number>` : Reinstalls the specified instance, this is just in case if the instance is giving problems.
+- `dupmn install <profile_name> [optional_params]` : Install a new instance based on the parameters of the given profile name.
+`[optional_params]` list:  
+`-ip=IP` : Use a specific IPv4 or IPv6 (BETA STATE).
+- `dupmn reinstall <profile_name> <number> [optional_params]` : Reinstalls the specified instance, this is just in case if the instance is giving problems.
+`[optional_params]` list:  
+`-ip=IP` : Use a specific IPv4 or IPv6 (BETA STATE).
 - `dupmn uninstall <profile_name> <number>` : Uninstall the specified instance of the given profile name, you can put `all` instead of a number to uninstall all the duplicated instances.
 - `dupmn bootstrap <profile_name> <number> [number]` : Copies the main node stored chain to a dupe, optionally you can put a dupe number to copy from one dupe to another (if copying from main node, it must be stopped or the profile must have the COIN_SERVICE parameter).
 - `dupmn iplist` : Shows your current IPv4 and IPv6 addresses.
@@ -38,11 +42,6 @@ Then you can remove the installer script if you want: `rm -rf dupmn_install.sh`.
 - `dupmn swapfile <size_in_mbytes>` : Creates/changes or deletes (if value is 0) a swapfile to increase the virtual memory, allowing to fit more masternodes in the same VPS, recommended size is 150 MB for each masternode (example: 3 masternodes => `dupmn swapfile 450`), note that some masternodes might be more 'RAM hungry'.
 - `dupmn help` : Just shows the available commands in the console.
 - `dupmn update` : Checks the last version of the script and updates it if necessary.
-
-Commands in beta state:
-
-- `dupmn ipinstall <profile_name> <ip>` : Install a new instance based on the parameters of the given profile name that will use the given IP.
-- `dupmn ipreinstall <profile_name> <number> <ip>` : Reinstalls the specified instance with the given IP, this is just in case if the instance is giving problems.
 
 Note: `<parameter>` means required, `[parameter]` means optional.
 
