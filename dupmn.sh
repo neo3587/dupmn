@@ -162,19 +162,23 @@ function install_proc() {
 
 	new_folder="$coin_folder$2"
 
-	if [[ ! $(wallet_loaded) ]]; then
-		for (( i=1; i<=$dup_count; i++ )); do
-			if [[ $(wallet_loaded $i) ]]; then
-				new_key=$(try_cmd $coin_cli-$i "createmasternodekey" "masternode genkey")
-				break
-			fi
-		done
-	else
-		new_key=$(try_cmd $exec_coin_cli "createmasternodekey" "masternode genkey")
+	if [[ ! $new_key ]]; then
+		if [[ ! $(wallet_loaded) ]]; then
+			for (( i=1; i<=$dup_count; i++ )); do
+				if [[ $(wallet_loaded $i) ]]; then
+					new_key=$(try_cmd $coin_cli-$i "createmasternodekey" "masternode genkey")
+					break
+				fi
+			done
+		else
+			new_key=$(try_cmd $exec_coin_cli "createmasternodekey" "masternode genkey")
+		fi
 	fi
 	
-	new_rpc=$([[ -n $rpc_port ]] && echo $rpc_port || conf_get_value $coin_folder/$coin_config "rpcport")
-	new_rpc=$(find_port $(($([[ -n $new_rpc ]] && echo $new_rpc || echo "1023")+1)))
+	if [[ ! $new_rpc ]]; then
+		new_rpc=$([[ -n $rpc_port ]] && echo $rpc_port || conf_get_value $coin_folder/$coin_config "rpcport")
+		new_rpc=$(find_port $(($([[ -n $new_rpc ]] && echo $new_rpc || echo "1023")+1)))
+	fi
 
 	mkdir $new_folder > /dev/null 2>&1
 	cp $coin_folder/$coin_config $new_folder
@@ -200,7 +204,7 @@ function install_proc() {
 
 	$(conf_set_value .dupmn/dupmn.conf $1 $2 1)
 
-	if [[ -z "$new_key" ]]; then 
+	if [[ ! $new_key ]]; then 
 		# main and dupes were stopped on createmasternodekey
 		echo "Couldn't find a opened $coin_name wallet opened to generate a private key, temporary opening the new wallet to generate a key"
 		$(conf_set_value $new_folder/$coin_config "masternode"        "0"      1)
@@ -620,10 +624,14 @@ function cmd_help() {
 			\n  - ${YELLOW}dupmn profdel <prof_name>                     ${NC}Deletes the given profile name, this will uninstall too any duplicated instance that uses this profile.\
 			\n  - ${YELLOW}dupmn install <prof_name> [params]            ${NC}Install a new instance based on the parameters of the given profile name.\
 			\n      ${YELLOW}[params]${NC} list:\
-			\n        ${GREEN}-ip=${NC}IP         Use a specific IPv4 or IPv6 (BETA STATE).\
+			\n        ${GREEN}-ip=${NC}IP               Use a specific IPv4 or IPv6 (BETA STATE).\
+			\n        ${GREEN}-rpcport=${NC}PORT        Use a specific port for RPC commands (must be valid and not in use).\
+			\n        ${GREEN}-privkey=${NC}PRIVATEKEY  Set a user-defined masternode private key.\
 			\n  - ${YELLOW}dupmn reinstall <prof_name> <number> [params] ${NC}Reinstalls the specified instance, this is just in case if the instance is giving problems.\
 			\n      ${YELLOW}[params]${NC} list:\
-			\n        ${GREEN}-ip=${NC}IP         Use a specific IPv4 or IPv6 (BETA STATE).\
+			\n        ${GREEN}-ip=${NC}IP               Use a specific IPv4 or IPv6 (BETA STATE).\
+			\n        ${GREEN}-rpcport=${NC}PORT        Use a specific port for RPC commands (must be valid and not in use).\
+			\n        ${GREEN}-privkey=${NC}PRIVATEKEY  Set a user-defined masternode private key.\
 			\n  - ${YELLOW}dupmn uninstall <prof_name> <number>          ${NC}Uninstall the specified instance of the given profile name, you can put ${YELLOW}all${NC} instead of a number to uninstall all the duplicated instances.\
 			\n  - ${YELLOW}dupmn bootstrap <prof_name> <number> [number] ${NC}Copies the chain from the main node to a dupe or optionally from one dupe to another one.\
 			\n  - ${YELLOW}dupmn iplist                                  ${NC}Shows all your configurated IPv4 and IPv6.\
@@ -764,8 +772,14 @@ function main() {
 	}
 	function opt_install_params() {
 		for x in $@; do
-			if [[ ! -n $ip && "$x" =~ ^-ip=* ]]; then
+			if [[ ! $ip && "$x" =~ ^-ip=* ]]; then
 				ip_valid ${x:4}
+			elif [[ ! $new_rpc && "$x" =~ ^-rpcport=* ]]; then
+				new_rpc=${x:9}
+				[[ $new_rpc -lt 1024 ||  $new_rpc -gt 49151 ]] && echo "-rpcport must be between 1024 and 49451" && exit
+				[[ ! $(port_check $new_rpc) ]] && echo "given -rpcport seems to be in use" && exit
+			elif [[ ! $new_key && "$x" =~ ^-privkey=* ]]; then
+				new_key=${x:9}
 			fi
 		done
 	}
