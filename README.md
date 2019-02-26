@@ -29,10 +29,14 @@ Then you can remove the installer script if you want: `rm -rf dupmn_install.sh`.
 - `dupmn profdel <profile_name>` : Deletes the saved profile with the given name and uninstalls the duplicated instances that uses that profile.
 - `dupmn install <profile_name> [optional_params]` : Install a new instance based on the parameters of the given profile name.
 `[optional_params]` list:  
-`-ip=IP` : Use a specific IPv4 or IPv6 (BETA STATE).
+`-ip=IP` : Use a specific IPv4 or IPv6 (BETA STATE).  
+`-rpcport=PORT` : Use a specific port for RPC commands (must be valid and not in use).  
+`-privkey=PRIVATEKEY` : Set a user-defined masternode private key.  
 - `dupmn reinstall <profile_name> <number> [optional_params]` : Reinstalls the specified instance, this is just in case if the instance is giving problems.
 `[optional_params]` list:  
-`-ip=IP` : Use a specific IPv4 or IPv6 (BETA STATE).
+`-ip=IP` : Use a specific IPv4 or IPv6 (BETA STATE).  
+`-rpcport=PORT` : Use a specific port for RPC commands (must be valid and not in use).  
+`-privkey=PRIVATEKEY` : Set a user-defined masternode private key.  
 - `dupmn uninstall <profile_name> <number>` : Uninstall the specified instance of the given profile name, you can put `all` instead of a number to uninstall all the duplicated instances.
 - `dupmn bootstrap <profile_name> <number> [number]` : Copies the main node stored chain to a dupe, optionally you can put a dupe number to copy from one dupe to another (if copying from main node, it must be stopped or the profile must have the COIN_SERVICE parameter).
 - `dupmn iplist` : Shows your current IPv4 and IPv6 addresses.
