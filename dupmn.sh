@@ -4,7 +4,6 @@
 # Source: https://github.com/neo3587/dupmn
 
 # TODO:
-# - install & ipinstall, set opt value => -ip=IP, -rpcport=RPCPORT, -privkey=PRIVKEY, ??
 # - apply a command to all dupe folders ??
 # - dupmn ipadd <ip> <netmask> <inc> # may require hard reset
 # - dupmn ipdel <ip> # not main one
@@ -18,6 +17,8 @@
 #		net.ipv6.conf.default.use_tempaddr=2
 #		#Changed/added values in /etc/sysctl.conf can be activated during runtime, but at least an interface down/up or a reboot is recommended.
 #		sysctl -p
+#
+#  note => seems like adding a ipv6 with ip cmd doesn't gets deleted after restart, need more testing
 #
 # ip bind options:
 #   1. bind main & dupe
@@ -50,6 +51,7 @@ exec_coin_daemon=""
 ip=""
 new_rpc=""
 new_key=""
+install_bootstrap=""
 
 
 function get_conf() {
@@ -112,8 +114,7 @@ function configure_systemd() {
 	chmod +x /etc/systemd/system/$coin_name-$1.service
 
 	systemctl daemon-reload
-	sleep 3
-	systemctl start $coin_name-$1.service
+	[[ -n $install_bootstrap ]] && cmd_bootstrap $1 || systemctl start $coin_name-$1.service
 	systemctl enable $coin_name-$1.service > /dev/null 2>&1
 
 	if [[ -z "$(ps axo cmd:100 | egrep $coin_name-$1)" ]]; then
@@ -271,7 +272,7 @@ function cmd_profadd() {
 
 	local prof_name=$([[ -z "$2" ]] && echo ${prof[COIN_NAME]} || echo "$2")
 
-	if [[ "$prof_name" = "dupmn.conf" ]]; then 
+	if [[ "$prof_name" = "dupmn.conf" ]]; then
 		echo -e "From the infinite amount of possible names for the profile and you had to choose the only one that you can't use... for god sake..."
 		exit
 	fi
@@ -409,7 +410,7 @@ function cmd_ipinstall() {
 	mn_addr_port=$([[ "$mn_addr_port" =~ ^[0-9]+$ ]] && echo ":$mn_addr_port" || echo "")
 
 	$(conf_set_value $new_folder/$coin_config "listen"         "1"              1)
-	$(conf_set_value $new_folder/$coin_config "externalip"     $ip              0)
+	$(conf_set_value $new_folder/$coin_config "externalip"     $ip$mn_addr_port 0)
 	$(conf_set_value $new_folder/$coin_config "masternodeaddr" $ip$mn_addr_port 0)
 	$(conf_set_value $new_folder/$coin_config "bind"           $ip              1)
 
@@ -417,9 +418,10 @@ function cmd_ipinstall() {
 		echo "Applying a tiny modification into the main masternode conf file, this only will be applied this time..."
 		local main_ip=$(conf_get_value $new_folder/$coin_config "masternodeaddr")
 		$(conf_set_value $coin_folder/$coin_config "bind" $([[ -z "$main_ip" ]] && echo $(conf_get_value $coin_folder/$coin_config "externalip") || echo "$main_ip") 1)
-		$exec_coin_cli stop > /dev/null 2>&1
-		sleep 5
-		$exec_coin_daemon -daemon > /dev/null 2>&1
+		if [[ $($exec_coin_cli stop 2> /dev/null) ]]; then
+			sleep 5
+			$exec_coin_daemon -daemon > /dev/null 2>&1
+		fi
 	fi
 
 	configure_systemd $2
@@ -482,7 +484,7 @@ function cmd_bootstrap() {
 				systemctl start $coin_service
 				echo -e "Reactivating main node..."
 				wallet_loaded "" 20 > /dev/null
-				exit
+				return
 			else
 				echo -e "${MAGENTA}Main MN service ($coin_service) not found in /etc/systemd/system${NC}"
 			fi
@@ -780,6 +782,8 @@ function main() {
 				[[ ! $(port_check $new_rpc) ]] && echo "given -rpcport seems to be in use" && exit
 			elif [[ ! $new_key && "$x" =~ ^-privkey=* ]]; then
 				new_key=${x:9}
+			elif [[ ! $install_bootstrap && "$x" = -bootstrap ]]; then
+				install_bootstrap="1"
 			fi
 		done
 	}
@@ -814,7 +818,7 @@ function main() {
 			fi
 			load_profile "$2" "1"
 			opt_install_params "${@:3}"
-			[[ -n $ip ]] && cmd_ipinstall "$2" $(($dup_count+1)) || cmd_install "$2" $(($dup_count+1))
+			[[ ! $ip ]] && cmd_install "$2" $(($dup_count+1)) || cmd_ipinstall "$2" $(($dup_count+1))
 			;;
 		"reinstall")
 			if [[ -z "$3" ]]; then
@@ -824,7 +828,7 @@ function main() {
 			load_profile "$2" "1"
 			instance_valid "$3"
 			opt_install_params "${@:4}"
-			[[ -n $ip ]] && cmd_reinstall "$2" $(($3)) "1" || cmd_reinstall "$2" $(($3)) "0"
+			[[ ! $ip ]] && cmd_reinstall "$2" $(($3)) "0" || cmd_reinstall "$2" $(($3)) "1"
 			;;
 		"uninstall")
 			if [[ -z "$3" ]]; then
