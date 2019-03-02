@@ -32,11 +32,13 @@ Then you can remove the installer script if you want: `rm -rf dupmn_install.sh`.
 `-ip=IP` : Use a specific IPv4 or IPv6 (BETA STATE).  
 `-rpcport=PORT` : Use a specific port for RPC commands (must be valid and not in use).  
 `-privkey=PRIVATEKEY` : Set a user-defined masternode private key.  
+`-bootstrap` : Apply a bootstrap during the installation.  
 - `dupmn reinstall <profile_name> <number> [optional_params]` : Reinstalls the specified instance, this is just in case if the instance is giving problems.
 `[optional_params]` list:  
 `-ip=IP` : Use a specific IPv4 or IPv6 (BETA STATE).  
 `-rpcport=PORT` : Use a specific port for RPC commands (must be valid and not in use).  
 `-privkey=PRIVATEKEY` : Set a user-defined masternode private key.  
+`-bootstrap` : Apply a bootstrap during the reinstallation.  
 - `dupmn uninstall <profile_name> <number>` : Uninstall the specified instance of the given profile name, you can put `all` instead of a number to uninstall all the duplicated instances.
 - `dupmn bootstrap <profile_name> <number> [number]` : Copies the main node stored chain to a dupe, optionally you can put a dupe number to copy from one dupe to another (if copying from main node, it must be stopped or the profile must have the COIN_SERVICE parameter).
 - `dupmn iplist` : Shows your current IPv4 and IPv6 addresses.
@@ -51,12 +53,20 @@ Note: `<parameter>` means required, `[parameter]` means optional.
 
 # <a name ="usage-example"></a> Usage example
 
-Usage example based on the CARDbuyers profile.
+Usage example based on the CARDbuyers profile:
+
+First install the dupmn script:
+``` 
+apt-get install lsof
+wget -q https://raw.githubusercontent.com/neo3587/dupmn/master/dupmn_install.sh
+bash dupmn_install.sh
+``` 
+Then add the coin profile (you don't need to run the commands above anymore in the current VPS):
 ```
 wget -q https://raw.githubusercontent.com/neo3587/dupmn/master/profiles/CARDbuyers.dmn
 dupmn profadd CARDbuyers.dmn CARDbuyers
 ```
-Now the CARDbuyers profile is saved and can be removed if you want: `rm -rf CARDbuyers.dmn` (you won't need to run the `profadd` command anymore for this coin).
+Now the CARDbuyers profile is saved and the downloaded file can be removed if you want: `rm -rf CARDbuyers.dmn` (you won't need to run the `profadd` command anymore for this coin).
 
 Let's create 3 extra instances (Note that you MUST already have installed the CARDbuyers node in the VPS, the script cannot obtain the binaries from nowhere):
 ```
