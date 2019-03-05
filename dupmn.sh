@@ -175,7 +175,7 @@ function install_proc() {
 			new_key=$(try_cmd $exec_coin_cli "createmasternodekey" "masternode genkey")
 		fi
 	fi
-	
+
 	if [[ ! $new_rpc ]]; then
 		new_rpc=$([[ -n $rpc_port ]] && echo $rpc_port || conf_get_value $coin_folder/$coin_config "rpcport")
 		new_rpc=$(find_port $(($([[ -n $new_rpc ]] && echo $new_rpc || echo "1023")+1)))
@@ -205,7 +205,7 @@ function install_proc() {
 
 	$(conf_set_value .dupmn/dupmn.conf $1 $2 1)
 
-	if [[ ! $new_key ]]; then 
+	if [[ ! $new_key ]]; then
 		# main and dupes were stopped on createmasternodekey
 		echo "Couldn't find a opened $coin_name wallet opened to generate a private key, temporary opening the new wallet to generate a key"
 		$(conf_set_value $new_folder/$coin_config "masternode"        "0"      1)
@@ -446,6 +446,9 @@ function cmd_ipinstall() {
 			break;
 		fi
 	done
+	if [[ ! $(echo get_ips 4 | grep -w $ip) && ! $(echo get_ips 6 | grep -w ${ip:1:-1}) ]]; then
+		echo -e "${RED}WARNING:${NC} IP ${GREEN}$ip${NC} is probably not added, the node may not work due to using a non-existent IP"
+	fi
 }
 function cmd_iplist() {
 	echo -e "${GREEN}IPv4:${NC}"
@@ -591,7 +594,7 @@ function cmd_swapfile() {
 	# <$1 = size_in_mbytes>
 
 	if [[ ! $(is_number $1) ]]; then
-		echo -e "${YELLOW}<size_in_mbytes>${NC} must be a number"
+		echo -e "${YELLOW}<size_in_mbytes>${NC} must be a number" 
 		exit
 	fi
 
@@ -629,11 +632,13 @@ function cmd_help() {
 			\n        ${GREEN}-ip=${NC}IP               Use a specific IPv4 or IPv6 (BETA STATE).\
 			\n        ${GREEN}-rpcport=${NC}PORT        Use a specific port for RPC commands (must be valid and not in use).\
 			\n        ${GREEN}-privkey=${NC}PRIVATEKEY  Set a user-defined masternode private key.\
+			\n        ${GREEN}-bootstrap${NC}           Apply a bootstrap during the installation.\
 			\n  - ${YELLOW}dupmn reinstall <prof_name> <number> [params] ${NC}Reinstalls the specified instance, this is just in case if the instance is giving problems.\
 			\n      ${YELLOW}[params]${NC} list:\
 			\n        ${GREEN}-ip=${NC}IP               Use a specific IPv4 or IPv6 (BETA STATE).\
 			\n        ${GREEN}-rpcport=${NC}PORT        Use a specific port for RPC commands (must be valid and not in use).\
 			\n        ${GREEN}-privkey=${NC}PRIVATEKEY  Set a user-defined masternode private key.\
+			\n        ${GREEN}-bootstrap${NC}           Apply a bootstrap during the reinstallation.\
 			\n  - ${YELLOW}dupmn uninstall <prof_name> <number>          ${NC}Uninstall the specified instance of the given profile name, you can put ${YELLOW}all${NC} instead of a number to uninstall all the duplicated instances.\
 			\n  - ${YELLOW}dupmn bootstrap <prof_name> <number> [number] ${NC}Copies the chain from the main node to a dupe or optionally from one dupe to another one.\
 			\n  - ${YELLOW}dupmn iplist                                  ${NC}Shows all your configurated IPv4 and IPv6.\
@@ -732,24 +737,36 @@ function main() {
 			exit
 		fi
 	}
-	function ip_valid() {
+	function ip_parse() {
 		# <$1 = IPv4 or IPv6>
 
 		function hexc() {
-			if [[ "$1" != "" ]]; then
-				printf "%x" $(printf "%d" "$(( 0x$1 ))")
-			fi
+			[[ "$1" != "" ]] && printf "%x" $(printf "%d" "$(( 0x$1 ))")
 		}
 
 		ip=$1
 
-		if [[ $(echo $(get_ips 4) | grep -w "$ip") ]]; then
+		local ipv4_regex="^(([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])\.){3}([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])$"
+		local ipv6_regex=("("
+			"([0-9a-fA-F]{1,4}:){7,7}[0-9a-fA-F]{1,4}|"
+			"([0-9a-fA-F]{1,4}:){1,7}:|"
+			"([0-9a-fA-F]{1,4}:){1,6}:[0-9a-fA-F]{1,4}|"
+			"([0-9a-fA-F]{1,4}:){1,5}(:[0-9a-fA-F]{1,4}){1,2}|"
+			"([0-9a-fA-F]{1,4}:){1,4}(:[0-9a-fA-F]{1,4}){1,3}|"
+			"([0-9a-fA-F]{1,4}:){1,3}(:[0-9a-fA-F]{1,4}){1,4}|"
+			"([0-9a-fA-F]{1,4}:){1,2}(:[0-9a-fA-F]{1,4}){1,5}|"
+			"[0-9a-fA-F]{1,4}:((:[0-9a-fA-F]{1,4}){1,6})|"
+			":((:[0-9a-fA-F]{1,4}){1,7}|"
+			":)"
+		")")
+
+		if [[ "$1" =~ $ipv4_regex ]]; then
 			return
-		elif [[ "$1" =~ ^[0-9a-f:]+$ && $(echo $1 | grep -o "::" | wc -l) -le 1 ]]; then
+		elif [[ "$1" =~ $(printf "%s" "${ipv6_regex[@]}") ]]; then
 
 			echo $ip | grep -qs "^:" && ip="0${ip}"
 
-			if echo $ip | grep -qs "::"; then
+			if [[ $(echo $ip | grep -qs "::") ]]; then
 				ip=$(echo $ip | sed "s/::/$(echo ":::::::::" | sed "s/$(echo $ip | sed 's/[^:]//g')//" | sed 's/:/:0/g')/")
 			fi
 
@@ -763,19 +780,17 @@ function main() {
 				ip=$(echo $ip | sed 's/:::/::/g')
 			done
 
-			if [[ $(echo $(get_ips 6) | grep -w "$ip") ]]; then
-				ip="[$ip]"
-				return
-			fi
+			ip="[$ip]"
+			return
 		fi
 
-		echo -e "$ip ip cannot be found or is invalid, use ${GREEN}dupmn iplist${NC} to check your current available IPs"
+		echo -e "${GREEN}$1${NC} doesn't have the structure of a IPv4 or a IPv6"
 		exit
 	}
 	function opt_install_params() {
 		for x in $@; do
 			if [[ ! $ip && "$x" =~ ^-ip=* ]]; then
-				ip_valid ${x:4}
+				ip_parse ${x:4}
 			elif [[ ! $new_rpc && "$x" =~ ^-rpcport=* ]]; then
 				new_rpc=${x:9}
 				[[ $new_rpc -lt 1024 ||  $new_rpc -gt 49151 ]] && echo "-rpcport must be between 1024 and 49451" && exit
