@@ -56,7 +56,6 @@ Usage example based on the CARDbuyers profile:
 
 First install the dupmn script:
 ``` 
-apt-get install lsof
 wget -q https://raw.githubusercontent.com/neo3587/dupmn/master/dupmn_install.sh
 bash dupmn_install.sh
 ``` 
