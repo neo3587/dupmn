@@ -5,6 +5,16 @@ readonly YELLOW='\e[1;33m'
 readonly CYAN='\e[1;36m'
 readonly NC='\e[0m'
 
+echo -e "Checking needed dependencies..."
+if [ ! "$(command -v lsof)" ]; then
+	echo -e "Installing ${CYAN}lsof${NC}..."
+	sudo apt-get install lsof
+fi
+if [ ! "$(command -v curl)" ]; then
+	echo -e "Installing ${CYAN}curl${NC}..."
+	sudo apt-get install curl
+fi
+
 dupmn_update=$(curl -s https://raw.githubusercontent.com/neo3587/dupmn/master/dupmn.sh)
 
 echo -e "\n===================================================\
