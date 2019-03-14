@@ -4,6 +4,7 @@
 # Source: https://github.com/neo3587/dupmn
 
 # TODO:
+# - dupmn reinstall <prof_name> => keep private key ?
 # - apply a command to all dupe folders ??
 # - dupmn ipadd <ip> <netmask> <inc> # may require hard reset
 # - dupmn ipdel <ip> # not main one
@@ -156,9 +157,6 @@ function install_proc() {
 	if [ ! -d "$coin_folder" ]; then
 		echo -e "$coin_folder folder can't be found, $coin_name is not installed in the system or the given profile has a wrong parameter"
 		exit
-	elif [ ! "$(command -v lsof)" ]; then
-		echo -e "lsof is not installed in the system, use ${CYAN}apt-get install lsof${NC} and retry the installation"
-		exit
 	fi
 
 	new_folder="$coin_folder$2"
@@ -300,6 +298,8 @@ function cmd_profdel() {
 	# <$1 = profile_name>
 
 	if [ $dup_count -gt 0 ]; then
+		read -r -p "All the dupes created with this profile will be deleted, are you sure to apply this command? [Y/n] " yesno
+		[[ ! $yesno =~ ^[Yy]$|^[Yy][Ee][Ss]$ ]] && echo -e "Profile deletion cancelled" && exit
 		cmd_uninstall $1 all
 	fi
 	sed -i "/$1\=/d" ".dupmn/dupmn.conf"
