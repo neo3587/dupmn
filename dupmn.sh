@@ -314,11 +314,41 @@ function cmd_install() {
 	# <$1 = profile_name> | <$2 = instance_number>
 
 	install_proc $1 $2
-	configure_systemd $2
 
+	if [[ -n $ip ]]; then 
+
+		# IP repeated check:
+		# local netstat_list=$(netstat -Wlantp | grep LISTEN | grep $coin_daemon)
+		# for each IP => echo netstat_list | grep $ip_from_list
+
+		local mn_addr_port=$(conf_get_value $new_folder/$coin_config "port")
+		mn_addr_port=$([[ "$mn_addr_port" =~ ^[0-9]+$ ]] && echo $mn_addr_port || $(conf_get_value $new_folder/$coin_config "masternodeaddr") | rev | "cut -d : -f1" | rev)
+		mn_addr_port=$([[ "$mn_addr_port" =~ ^[0-9]+$ ]] && echo $mn_addr_port || $(conf_get_value $new_folder/$coin_config "externalip")     | rev | "cut -d : -f1" | rev)
+		mn_addr_port=$([[ "$mn_addr_port" =~ ^[0-9]+$ ]] && echo :$mn_addr_port || echo "")
+
+		$(conf_set_value $new_folder/$coin_config "listen"         "1"              1)
+		$(conf_set_value $new_folder/$coin_config "externalip"     $ip$mn_addr_port 0)
+		$(conf_set_value $new_folder/$coin_config "masternodeaddr" $ip$mn_addr_port 0)
+		$(conf_set_value $new_folder/$coin_config "bind"           $ip              1)
+
+		if [[ -z $(conf_get_value $coin_folder/$coin_config "bind") ]]; then
+			echo "Applying a tiny modification into the main masternode conf file, this only will be applied this time..."
+			local main_ip=$(conf_get_value $new_folder/$coin_config "masternodeaddr")
+			$(conf_set_value $coin_folder/$coin_config "bind" $([[ -z "$main_ip" ]] && echo $(conf_get_value $coin_folder/$coin_config "externalip") || echo "$main_ip") 1)
+			if [[ $($exec_coin_cli stop 2> /dev/null) ]]; then
+				sleep 5
+				$exec_coin_daemon -daemon > /dev/null 2>&1
+			fi
+		fi
+	fi
+
+	configure_systemd $2
+	
+	local show_ip=$([[ -n $ip ]] && echo $ip$mn_addr_port || echo $(conf_get_value $new_folder/$coin_config "masternodeaddr"))
+	
 	echo -e "===================================================================================================\
 			\n${BLUE}$coin_name${NC} duplicated masternode ${CYAN}number $2${NC} should be now up and trying to sync with the blockchain.\
-			\nThe duplicated masternode uses the same IP and PORT than the original one.\
+			\nThe duplicated masternode uses the $([[ -n $show_ip ]] && echo "IP:PORT ${YELLOW}$show_ip${NC}" || echo "same IP and PORT than the original one").\
 			\nRPC port is ${MAGENTA}$new_rpc${NC}, this one is used to send commands to the wallet, DON'T put it in 'masternode.conf' (other programs might want to use this port which causes a conflict, but you can change it with ${MAGENTA}dupmn rpcchange $1 $2 PORT_NUMBER${NC}).\
 			\nStart:              ${RED}systemctl start   $coin_name-$2.service${NC}\
 			\nStop:               ${RED}systemctl stop    $coin_name-$2.service${NC}\
@@ -330,20 +360,28 @@ function cmd_install() {
 			\nNOTE 1: ${GREEN}$coin_cli-0${NC} and ${GREEN}$coin_daemon-0${NC} are just a reference to the 'main masternode', not a created one with dupmn.\
 			\nNOTE 2: You can use ${GREEN}$coin_cli-all [parameters]${NC} and ${GREEN}$coin_daemon-all [parameters]${NC} to apply the parameters on all masternodes. Example: ${GREEN}$coin_cli-all masternode status${NC}\
 			\n==================================================================================================="
+	
+	if [[ -n $ip ]]; then
+		for (( i=0; i<=$dup_count; i++ )); do
+			if [[ $i != $2 && $(conf_get_value $coin_folder$([[ $i -eq 0 ]] && echo "" || echo $i)/$coin_config "bind") = $ip ]]; then
+				echo -e "${RED}WARNING:${NC} looks like that the ${BLUE}$([[ $i -eq 0 ]] && echo "main node" || echo "dupe $i")${NC} already uses the same IP, it may cause that this dupe doesn't work"
+				break;
+			fi
+		done
+		if [[ ! $(echo get_ips 4 | grep -w $ip) && ! $(echo get_ips 6 | grep -w ${ip:1:-1}) ]]; then
+			echo -e "${RED}WARNING:${NC} IP ${GREEN}$ip${NC} is probably not added, the node may not work due to using a non-existent IP"
+		fi
+	fi
 }
 function cmd_reinstall() {
-	# <$1 = profile_name> | <$2 = instance_number> | <$3 = use_ipinstall>
+	# <$1 = profile_name> | <$2 = instance_number>
 
 	systemctl stop $coin_name-$2.service
 	[[ $($exec_coin_cli-$2 stop 2> /dev/null) ]] && sleep 2
 	rm -rf $coin_folder$2
-
-	if [[ "$3" == "0" ]]; then
-		cmd_install $1 $2
-	else
-		cmd_ipinstall $1 $2
-	fi
-
+	
+	cmd_install $1 $2
+	
 	$(make_chmod_file /usr/bin/$coin_cli-all    "#!/bin/bash\nfor (( i=0; i<=$dup_count; i++ )) do\n echo -e MN\$i:\n $coin_cli-\$i \$@\ndone")
 	$(make_chmod_file /usr/bin/$coin_daemon-all "#!/bin/bash\nfor (( i=0; i<=$dup_count; i++ )) do\n echo -e MN\$i:\n $coin_daemon-\$i \$@\ndone")
 
@@ -393,61 +431,6 @@ function cmd_uninstall() {
 		systemctl disable $coin_name-$dup_count.service > /dev/null 2>&1
 		rm -rf /etc/systemd/system/$coin_name-$dup_count.service
 		systemctl daemon-reload
-	fi
-}
-function cmd_ipinstall() {
-	# <$1 = profile_name> | <$2 = instance_number>
-
-	echo -e "!!! This command stills in beta state !!!"
-
-	# IP repeated check:
-	# local netstat_list=$(netstat -Wlantp | grep LISTEN | grep $coin_daemon)
-	# for each IP => echo netstat_list | grep $ip_from_list
-
-	install_proc $1 $2
-
-	local mn_addr_port=$(echo $(conf_get_value $new_folder/$coin_config "masternodeaddr") | rev | cut -d ":" -f1 | rev) 
-	mn_addr_port=$([[ "$mn_addr_port" =~ ^[0-9]+$ ]] && echo ":$mn_addr_port" || echo "")
-
-	$(conf_set_value $new_folder/$coin_config "listen"         "1"              1)
-	$(conf_set_value $new_folder/$coin_config "externalip"     $ip$mn_addr_port 0)
-	$(conf_set_value $new_folder/$coin_config "masternodeaddr" $ip$mn_addr_port 0)
-	$(conf_set_value $new_folder/$coin_config "bind"           $ip              1)
-
-	if [[ -z $(conf_get_value $coin_folder/$coin_config "bind") ]]; then
-		echo "Applying a tiny modification into the main masternode conf file, this only will be applied this time..."
-		local main_ip=$(conf_get_value $new_folder/$coin_config "masternodeaddr")
-		$(conf_set_value $coin_folder/$coin_config "bind" $([[ -z "$main_ip" ]] && echo $(conf_get_value $coin_folder/$coin_config "externalip") || echo "$main_ip") 1)
-		if [[ $($exec_coin_cli stop 2> /dev/null) ]]; then
-			sleep 5
-			$exec_coin_daemon -daemon > /dev/null 2>&1
-		fi
-	fi
-
-	configure_systemd $2
-
-	echo -e "===================================================================================================\
-			\n${BLUE}$coin_name${NC} duplicated masternode ${CYAN}number $2${NC} should be now up and trying to sync with the blockchain.\
-			\nThe duplicated masternode uses the IP ${YELLOW}$ip${NC} and the same PORT than the original one.\
-			\nRPC port is ${MAGENTA}$new_rpc${NC}, this one is used to send commands to the wallet, DON'T put it in 'masternode.conf' (other programs might want to use this port which causes a conflict, but you can change it with ${MAGENTA}dupmn rpcchange $1 $2 PORT_NUMBER${NC}).\
-			\nStart:              ${RED}systemctl start   $coin_name-$2.service${NC}\
-			\nStop:               ${RED}systemctl stop    $coin_name-$2.service${NC}\
-			\nStart on reboot:    ${RED}systemctl enable  $coin_name-$2.service${NC}\
-			\nNo start on reboot: ${RED}systemctl disable $coin_name-$2.service${NC}\
-			\n(Currently configured to start on reboot)\
-			\nDUPLICATED MASTERNODE PRIVATEKEY is: ${GREEN}$new_key${NC}\
-			\nTo check the masternode status just use: ${GREEN}$coin_cli-$2 masternode status${NC} (Wait until the new masternode is synced with the blockchain before trying to start it).\
-			\nNOTE 1: ${GREEN}$coin_cli-0${NC} and ${GREEN}$coin_daemon-0${NC} are just a reference to the 'main masternode', not a created one with dupmn.\
-			\nNOTE 2: You can use ${GREEN}$coin_cli-all [parameters]${NC} and ${GREEN}$coin_daemon-all [parameters]${NC} to apply the parameters on all masternodes. Example: ${GREEN}$coin_cli-all masternode status${NC}\
-			\n==================================================================================================="
-	for (( i=0; i<=$dup_count; i++ )); do
-		if [[ $i != $2 && $(conf_get_value $coin_folder$([[ $i -eq 0 ]] && echo "" || echo $i)/$coin_config "bind") = $ip ]]; then
-			echo -e "${RED}WARNING:${NC} looks like that the ${BLUE}$([[ $i -eq 0 ]] && echo "main node" || echo "dupe $i")${NC} already uses the same IP, it may cause that this dupe doesn't work"
-			break;
-		fi
-	done
-	if [[ ! $(echo get_ips 4 | grep -w $ip) && ! $(echo get_ips 6 | grep -w ${ip:1:-1}) ]]; then
-		echo -e "${RED}WARNING:${NC} IP ${GREEN}$ip${NC} is probably not added, the node may not work due to using a non-existent IP"
 	fi
 }
 function cmd_iplist() {
@@ -791,6 +774,7 @@ function main() {
 		for x in $@; do
 			if [[ ! $ip && "$x" =~ ^-ip=* ]]; then
 				ip_parse ${x:4}
+				echo -e "!!! -ip parameter stills in beta state !!!"
 			elif [[ ! $new_rpc && "$x" =~ ^-rpcport=* ]]; then
 				new_rpc=${x:9}
 				[[ $new_rpc -lt 1024 ||  $new_rpc -gt 49151 ]] && echo "-rpcport must be between 1024 and 49451" && exit
@@ -833,7 +817,7 @@ function main() {
 			fi
 			load_profile "$2" "1"
 			opt_install_params "${@:3}"
-			[[ ! $ip ]] && cmd_install "$2" $(($dup_count+1)) || cmd_ipinstall "$2" $(($dup_count+1))
+			cmd_install "$2" $(($dup_count+1))
 			;;
 		"reinstall")
 			if [[ -z "$3" ]]; then
