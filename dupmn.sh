@@ -4,7 +4,6 @@
 # Source: https://github.com/neo3587/dupmn
 
 # TODO:
-# - dupmn reinstall <prof_name> => keep private key ?
 # - apply a command to all dupe folders ??
 # - dupmn ipadd <ip> <netmask> <inc> # may require hard reset
 # - dupmn ipdel <ip> # not main one
@@ -377,7 +376,8 @@ function cmd_reinstall() {
 	# <$1 = profile_name> | <$2 = instance_number>
 
 	systemctl stop $coin_name-$2.service
-	[[ $($exec_coin_cli-$2 stop 2> /dev/null) ]] && sleep 2
+	[[ $($exec_coin_cli-$2 stop 2> /dev/null) ]] && sleep 3
+	[[ ! $new_key ]] && new_key=$(conf_get_value $coin_folder$2/$coin_config "masternodeprivkey")
 	rm -rf $coin_folder$2
 	
 	cmd_install $1 $2
@@ -827,7 +827,7 @@ function main() {
 			load_profile "$2" "1"
 			instance_valid "$3"
 			opt_install_params "${@:4}"
-			[[ ! $ip ]] && cmd_reinstall "$2" $(($3)) "0" || cmd_reinstall "$2" $(($3)) "1"
+			cmd_reinstall "$2" $(($3))
 			;;
 		"uninstall")
 			if [[ -z "$3" ]]; then
