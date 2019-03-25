@@ -24,21 +24,21 @@ Then you can remove the installer script if you want: `rm -rf dupmn_install.sh`.
 
 # <a name ="commands"></a> Commands
 
-- `dupmn profadd <profile_file> <new_profile_name>` : Adds a profile with the given name that will be used to create duplicates of the masternode.
-- `dupmn profdel <profile_name>` : Deletes the saved profile with the given name and uninstalls the duplicated instances that uses that profile.
-- `dupmn install <profile_name> [optional_params]` : Install a new instance based on the parameters of the given profile name.
+- [`dupmn profadd <profile_file> <new_profile_name>`](https://github.com/neo3587/dupmn/wiki/Commands#dupmn-profadd-profile_file-profile_name) : Adds a profile with the given name that will be used to create duplicates of the masternode.
+- [`dupmn profdel <profile_name>`](https://github.com/neo3587/dupmn/wiki/Commands#dupmn-profdel-prof_name) : Deletes the saved profile with the given name and uninstalls the duplicated instances that uses that profile.
+- [`dupmn install <profile_name> [optional_params]`](https://github.com/neo3587/dupmn/wiki/Commands#dupmn-install-prof_name-params) : Install a new instance based on the parameters of the given profile name.
 `[optional_params]` list:  
 `-ip=IP` : Use a specific IPv4 or IPv6 (BETA STATE).  
 `-rpcport=PORT` : Use a specific port for RPC commands (must be valid and not in use).  
 `-privkey=PRIVATEKEY` : Set a user-defined masternode private key.  
 `-bootstrap` : Apply a bootstrap during the installation.  
-- `dupmn reinstall <profile_name> <number> [optional_params]` : Reinstalls the specified instance, this is just in case if the instance is giving problems.
+- [`dupmn reinstall <profile_name> <number> [optional_params]`](https://github.com/neo3587/dupmn/wiki/Commands#dupmn-reinstall-prof_name--params) : Reinstalls the specified instance, this is just in case if the instance is giving problems.
 `[optional_params]` list:  
 `-ip=IP` : Use a specific IPv4 or IPv6 (BETA STATE).  
 `-rpcport=PORT` : Use a specific port for RPC commands (must be valid and not in use).  
 `-privkey=PRIVATEKEY` : Set a user-defined masternode private key.  
 `-bootstrap` : Apply a bootstrap during the reinstallation.  
-- `dupmn uninstall <profile_name> <number>` : Uninstall the specified instance of the given profile name, you can put `all` instead of a number to uninstall all the duplicated instances.
+- [`dupmn uninstall <profile_name> <number>`](https://github.com/neo3587/dupmn/wiki/Commands#dupmn-uninstall-prof_name-) : Uninstall the specified instance of the given profile name, you can put `all` instead of a number to uninstall all the duplicated instances.
 - `dupmn bootstrap <profile_name> <number> [number]` : Copies the main node stored chain to a dupe, optionally you can put a dupe number to copy from one dupe to another (if copying from main node, it must be stopped or the profile must have the COIN_SERVICE parameter).
 - `dupmn iplist` : Shows your current IPv4 and IPv6 addresses.
 - `dupmn rpcchange <profile_name> <number> [port]` : Changes the rpc port of the given instance number, this is only in case that by chance it causes a conflict with another application that uses the same port (if no port is provided, it will automatically find any free port).
