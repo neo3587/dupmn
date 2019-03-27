@@ -49,7 +49,7 @@ Then you can remove the installer script if you want: `rm -rf dupmn_install.sh`.
 - [`dupmn update`](https://github.com/neo3587/dupmn/wiki/Commands#dupmn-update) : Checks the last version of the script and updates it if necessary.
 
 *Note: `<parameter>` means required, `[parameter]` means optional.*  
-*Note 2: Check the [Commands Page](https://github.com/neo3587/dupmn/wiki/Commands#dupmn-update) to get a extended info and usage examples of each command.*
+*Note 2: Check the [Commands Page](https://github.com/neo3587/dupmn/wiki/Commands#dupmn-update) for extended info and usage examples of each command.*
 
 # <a name ="usage-example"></a> Usage example
 
@@ -102,7 +102,7 @@ MN04 123.45.67.89:48451 719FiV3S7m874FH1A5hmRYGFUwEzd8esES8k6TJoevgJBHnmQV9 6dbf
 Using `dupmn install CARDbuyers` will show you the masternode private key for that instance, the transaction must be obviosuly different for each masternode, you can't use the same transaction to run 2 masternodes, even if they're in the same VPS.
 
 *Note: `dupmn install CARDbuyers` will show you also a different rpc port, this is NOT the port that you have to add in the `masternode.conf` file, every masternode will use the same port (48451 in case of CARDbuyers).*  
-*Note 2: You can see some image examples at <a href="https://github.com/neo3587/dupmn/wiki/Image-Examples">Image Examples</a>*
+*Note 2: You can see some image examples at <a href="https://github.com/neo3587/dupmn/wiki/Image-Examples">Image Examples</a>.*
 
 # <a name ="profile-creation"></a> Profile creation
 
