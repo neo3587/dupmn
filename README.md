@@ -17,10 +17,9 @@ A script to easily create and manage multiple masternodes of the same coin in th
 
 On your VPS type:
 ```
-wget -q https://raw.githubusercontent.com/neo3587/dupmn/master/dupmn_install.sh
-bash dupmn_install.sh
+curl -sL https://raw.githubusercontent.com/neo3587/dupmn/master/dupmn_install.sh | sudo -E bash -
 ```
-Then you can remove the installer script if you want: `rm -rf dupmn_install.sh`.
+And that's all, the script is already installed.
 
 # <a name ="commands"></a> Commands
 
@@ -57,8 +56,7 @@ Usage example based on the CARDbuyers profile:
 
 First install the dupmn script:
 ``` 
-wget -q https://raw.githubusercontent.com/neo3587/dupmn/master/dupmn_install.sh
-bash dupmn_install.sh
+curl -sL https://raw.githubusercontent.com/neo3587/dupmn/master/dupmn_install.sh | sudo -E bash -
 ``` 
 Then add the coin profile (you don't need to run the commands above anymore in the current VPS):
 ```
