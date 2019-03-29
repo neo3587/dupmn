@@ -254,6 +254,8 @@ function netmask_cidr() {
 function cmd_profadd() {
 	# <$1 = profile_file> | [$2 = profile_name]
 
+	[[ ! -f $1 ]] && echo -e "${BLUE}$1${NC} file doesn't exists" && exit
+
 	local -A prof=$(get_conf $1)
 	local CMD_ARRAY=(COIN_NAME COIN_DAEMON COIN_CLI COIN_FOLDER COIN_CONFIG)
 
