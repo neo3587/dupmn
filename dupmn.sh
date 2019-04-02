@@ -236,6 +236,17 @@ function get_ips() {
 		echo -e $(ip addr show | awk '/inet6/{print $2}' | grep -v '::1/128' | cut -d / -f1)
 	fi
 }
+function get_addr_port() {
+	# <$1 conf_file>
+	local port=$(conf_get_value $1 "port")
+	port=$([[ "$port" =~ ^[0-9]+$ ]] && echo $port || $(conf_get_value $1 "masternodeaddr") | rev | "cut -d : -f1" | rev)
+	port=$([[ "$port" =~ ^[0-9]+$ ]] && echo $port || $(conf_get_value $1 "externalip")     | rev | "cut -d : -f1" | rev)
+	local addr=$(conf_get_value $1 "bind")
+	addr=$([[ "$addr" =~ ^[0-9]+$ ]] && echo $addr || $(conf_get_value $1 "masternodeaddr") | rev | "cut -d : -f1-" | rev)
+	addr=$([[ "$addr" =~ ^[0-9]+$ ]] && echo $addr || $(conf_get_value $1 "externalip")     | rev | "cut -d : -f1-" | rev)
+	# local -a result=$(get_addr_port)
+	echo "( $addr $port )"
+}
 function netmask_cidr() {
 	# <$1 = netmask>
 	if [[ $(echo $1 | grep -w -E -o '^(254|252|248|240|224|192|128)\.0\.0\.0|255\.(254|252|248|240|224|192|128|0)\.0\.0|255\.255\.(254|252|248|240|224|192|128|0)\.0|255\.255\.255\.(255|254|252|248|240|224|192|128|0)') ]]; then
@@ -322,15 +333,16 @@ function cmd_install() {
 		# local netstat_list=$(netstat -Wlantp | grep LISTEN | grep $coin_daemon)
 		# for each IP => echo netstat_list | grep $ip_from_list
 
-		local mn_addr_port=$(conf_get_value $new_folder/$coin_config "port")
-		mn_addr_port=$([[ "$mn_addr_port" =~ ^[0-9]+$ ]] && echo $mn_addr_port || $(conf_get_value $new_folder/$coin_config "masternodeaddr") | rev | "cut -d : -f1" | rev)
-		mn_addr_port=$([[ "$mn_addr_port" =~ ^[0-9]+$ ]] && echo $mn_addr_port || $(conf_get_value $new_folder/$coin_config "externalip")     | rev | "cut -d : -f1" | rev)
-		mn_addr_port=$([[ "$mn_addr_port" =~ ^[0-9]+$ ]] && echo :$mn_addr_port || echo "")
+		#local -a mn_port=$(get_addr_port)
+		local mn_port=$(conf_get_value $new_folder/$coin_config "port")
+		mn_port=$([[ "$mn_port" =~ ^[0-9]+$ ]] && echo $mn_port || $(conf_get_value $new_folder/$coin_config "masternodeaddr") | rev | "cut -d : -f1" | rev)
+		mn_port=$([[ "$mn_port" =~ ^[0-9]+$ ]] && echo $mn_port || $(conf_get_value $new_folder/$coin_config "externalip")     | rev | "cut -d : -f1" | rev)
+		mn_port=$([[ "$mn_port" =~ ^[0-9]+$ ]] && echo :$mn_port || echo "")
 
-		$(conf_set_value $new_folder/$coin_config "listen"         "1"              1)
-		$(conf_set_value $new_folder/$coin_config "externalip"     $ip$mn_addr_port 0)
-		$(conf_set_value $new_folder/$coin_config "masternodeaddr" $ip$mn_addr_port 0)
-		$(conf_set_value $new_folder/$coin_config "bind"           $ip              1)
+		$(conf_set_value $new_folder/$coin_config "listen"         "1"         1)
+		$(conf_set_value $new_folder/$coin_config "externalip"     $ip$mn_port 0)
+		$(conf_set_value $new_folder/$coin_config "masternodeaddr" $ip$mn_port 0)
+		$(conf_set_value $new_folder/$coin_config "bind"           $ip         1)
 
 		if [[ -z $(conf_get_value $coin_folder/$coin_config "bind") ]]; then
 			echo "Applying a tiny modification into the main masternode conf file, this only will be applied this time..."
@@ -344,9 +356,9 @@ function cmd_install() {
 	fi
 
 	configure_systemd $2
-	
-	local show_ip=$([[ -n $ip ]] && echo $ip$mn_addr_port || echo $(conf_get_value $new_folder/$coin_config "masternodeaddr"))
-	
+
+	local show_ip=$([[ -n $ip ]] && echo $ip$mn_port || echo $(conf_get_value $new_folder/$coin_config "masternodeaddr"))
+
 	echo -e "===================================================================================================\
 			\n${BLUE}$coin_name${NC} duplicated masternode ${CYAN}number $2${NC} should be now up and trying to sync with the blockchain.\
 			\nThe duplicated masternode uses the $([[ -n $show_ip ]] && echo "IP:PORT ${YELLOW}$show_ip${NC}" || echo "same IP and PORT than the original one").\
@@ -361,7 +373,7 @@ function cmd_install() {
 			\nNOTE 1: ${GREEN}$coin_cli-0${NC} and ${GREEN}$coin_daemon-0${NC} are just a reference to the 'main masternode', not a created one with dupmn.\
 			\nNOTE 2: You can use ${GREEN}$coin_cli-all [parameters]${NC} and ${GREEN}$coin_daemon-all [parameters]${NC} to apply the parameters on all masternodes. Example: ${GREEN}$coin_cli-all masternode status${NC}\
 			\n==================================================================================================="
-	
+
 	if [[ -n $ip ]]; then
 		for (( i=0; i<=$dup_count; i++ )); do
 			if [[ $i != $2 && $(conf_get_value $coin_folder$([[ $i -eq 0 ]] && echo "" || echo $i)/$coin_config "bind") = $ip ]]; then
@@ -381,9 +393,9 @@ function cmd_reinstall() {
 	[[ $($exec_coin_cli-$2 stop 2> /dev/null) ]] && sleep 3
 	[[ ! $new_key ]] && new_key=$(conf_get_value $coin_folder$2/$coin_config "masternodeprivkey")
 	rm -rf $coin_folder$2
-	
+
 	cmd_install $1 $2
-	
+
 	$(make_chmod_file /usr/bin/$coin_cli-all    "#!/bin/bash\nfor (( i=0; i<=$dup_count; i++ )) do\n echo -e MN\$i:\n $coin_cli-\$i \$@\ndone")
 	$(make_chmod_file /usr/bin/$coin_daemon-all "#!/bin/bash\nfor (( i=0; i<=$dup_count; i++ )) do\n echo -e MN\$i:\n $coin_daemon-\$i \$@\ndone")
 
@@ -794,6 +806,7 @@ function main() {
 		exit
 	fi
 
+	local curr_dir=$PWD
 	cd ~
 
 	case "$1" in
@@ -802,6 +815,7 @@ function main() {
 				echo -e "${YELLOW}dupmn profadd <prof_file> [prof_name]${NC} requires a profile file and optionally a new profile name as parameters"
 				exit
 			fi
+			cd $curr_dir
 			cmd_profadd "$2" "$3"
 			;;
 		"profdel")
