@@ -610,7 +610,8 @@ function cmd_swapfile() {
 		echo -e "Swapfile deleted"
 	else
 		echo -e "Generating swapfile, this may take some time depending on the size..."
-		dd if=/dev/zero of=/mnt/dupmn_swapfile bs=1024 count=$(($1 * 1024)) > /dev/null 2>&1
+		echo -e "$(($1 * 1024 * 1024)) bytes swapfile"
+		dd if=/dev/zero of=/mnt/dupmn_swapfile bs=1024 bs=1M count=$(($1)) status=progress
 		chmod 600 /mnt/dupmn_swapfile > /dev/null 2>&1
 		mkswap /mnt/dupmn_swapfile > /dev/null 2>&1
 		swapon /mnt/dupmn_swapfile > /dev/null 2>&1
@@ -707,16 +708,23 @@ function main() {
 		rpc_port="${prof[RPC_PORT]}"
 		coin_service="${prof[COIN_SERVICE]}"
 		dup_count=$((${conf[$1]}))
-		exec_coin_daemon=$([[ -n ${prof[COIN_PATH]} ]] && echo ${prof[COIN_PATH]}$coin_daemon || which $coin_daemon)
-		exec_coin_cli=$([[ -n ${prof[COIN_PATH]} ]] && echo ${prof[COIN_PATH]}$coin_cli || which $coin_cli)
+		exec_coin_daemon=${prof[COIN_PATH]}$coin_daemon
+		exec_coin_cli=${prof[COIN_PATH]}$coin_cli
 
 		if [[ "$2" == "1" ]]; then
 			if [[ ! -f "$exec_coin_daemon" ]]; then
-				echo -e "Can't locate ${GREEN}$coin_daemon${NC}, it must be at ${CYAN}/usr/bin/${NC}, ${CYAN}/usr/local/bin/${NC} or in the defined path from \"COIN_PATH\""
-				exit
-			elif [[ ! -f "$exec_coin_cli" ]]; then
-				echo -e "Can't locate ${GREEN}$coin_cli${NC}, it must be at ${CYAN}/usr/bin/${NC}, ${CYAN}/usr/local/bin/${NC} or in the defined path from \"COIN_PATH\""
-				exit
+				exec_coin_daemon=$(which $coin_daemon)
+				if [[ ! -f "$exec_coin_daemon" ]]; then
+					echo -e "Can't locate ${GREEN}$coin_daemon${NC}, it must be at the defined path from ${CYAN}\"COIN_PATH\"${NC} or in ${CYAN}/usr/bin/${NC} or ${CYAN}/usr/local/bin/${NC}"
+					exit
+				fi
+			fi
+			if [[ ! -f "$exec_coin_cli" ]]; then
+				exec_coin_cli=$(which $coin_cli)
+				if [[ ! -f "$exec_coin_cli" ]]; then
+					echo -e "Can't locate ${GREEN}$coin_cli${NC}, it must be at the defined path from ${CYAN}\"COIN_PATH\"${NC} or in ${CYAN}/usr/bin/${NC} or ${CYAN}/usr/local/bin/${NC}"
+					exit
+				fi
 			fi
 		fi
 	}
