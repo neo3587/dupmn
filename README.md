@@ -20,10 +20,11 @@ On your VPS type:
 curl -sL https://raw.githubusercontent.com/neo3587/dupmn/master/dupmn_install.sh | sudo -E bash -
 ```
 And that's all, the script is already installed.
+Check the [Usage example](#usage-example) to see the guide of the steps to follow.
 
 # <a name ="commands"></a> Commands
 
-- [`dupmn profadd <profile_file> <new_profile_name>`](https://github.com/neo3587/dupmn/wiki/Commands#dupmn-profadd-profile_file-profile_name) : Adds a profile with the given name that will be used to create duplicates of the masternode.
+- [`dupmn profadd <profile_file> [new_profile_name]`](https://github.com/neo3587/dupmn/wiki/Commands#dupmn-profadd-profile_file-profile_name) : Adds a profile with the given name that will be used to create duplicates of the masternode.
 - [`dupmn profdel <profile_name>`](https://github.com/neo3587/dupmn/wiki/Commands#dupmn-profdel-prof_name) : Deletes the saved profile with the given name and uninstalls the duplicated instances that uses that profile.
 - [`dupmn install <profile_name> [optional_params]`](https://github.com/neo3587/dupmn/wiki/Commands#dupmn-install-prof_name-params) : Install a new instance based on the parameters of the given profile name.
 `[optional_params]` list:  
@@ -54,11 +55,11 @@ And that's all, the script is already installed.
 
 Usage example based on the CARDbuyers profile:
 
-First install the dupmn script:
+First install the dupmn script (only needs to be done once):
 ``` 
 curl -sL https://raw.githubusercontent.com/neo3587/dupmn/master/dupmn_install.sh | sudo -E bash -
 ``` 
-Then add the coin profile (you don't need to run the commands above anymore in the current VPS):
+Then add the coin profile (if the profile doesn't exists in the [profiles folder](https://github.com/neo3587/dupmn/tree/master/profiles), then check [Profile creation](#profile-creation)):
 ```
 wget -q https://raw.githubusercontent.com/neo3587/dupmn/master/profiles/CARDbuyers.dmn
 dupmn profadd CARDbuyers.dmn CARDbuyers
