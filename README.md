@@ -20,10 +20,11 @@ On your VPS type:
 curl -sL https://raw.githubusercontent.com/neo3587/dupmn/master/dupmn_install.sh | sudo -E bash -
 ```
 And that's all, the script is already installed.
+Check the [Usage example](#usage-example) to see the guide of the steps to follow.
 
 # <a name ="commands"></a> Commands
 
-- [`dupmn profadd <profile_file> <new_profile_name>`](https://github.com/neo3587/dupmn/wiki/Commands#dupmn-profadd-profile_file-profile_name) : Adds a profile with the given name that will be used to create duplicates of the masternode.
+- [`dupmn profadd <profile_file> [new_profile_name]`](https://github.com/neo3587/dupmn/wiki/Commands#dupmn-profadd-profile_file-profile_name) : Adds a profile with the given name that will be used to create duplicates of the masternode.
 - [`dupmn profdel <profile_name>`](https://github.com/neo3587/dupmn/wiki/Commands#dupmn-profdel-prof_name) : Deletes the saved profile with the given name and uninstalls the duplicated instances that uses that profile.
 - [`dupmn install <profile_name> [optional_params]`](https://github.com/neo3587/dupmn/wiki/Commands#dupmn-install-prof_name-params) : Install a new instance based on the parameters of the given profile name.
 `[optional_params]` list:  
@@ -54,11 +55,11 @@ And that's all, the script is already installed.
 
 Usage example based on the CARDbuyers profile:
 
-First install the dupmn script:
+First install the dupmn script (only needs to be done once):
 ``` 
 curl -sL https://raw.githubusercontent.com/neo3587/dupmn/master/dupmn_install.sh | sudo -E bash -
 ``` 
-Then add the coin profile (you don't need to run the commands above anymore in the current VPS):
+Then add the coin profile (if the profile doesn't exists in the [profiles folder](https://github.com/neo3587/dupmn/tree/master/profiles), then check [Profile creation](#profile-creation)):
 ```
 wget -q https://raw.githubusercontent.com/neo3587/dupmn/master/profiles/CARDbuyers.dmn
 dupmn profadd CARDbuyers.dmn CARDbuyers
@@ -106,14 +107,14 @@ Using `dupmn install CARDbuyers` will show you the masternode private key for th
 
 Using the CARDbuyers.dmn profile as example, you can create your own profile to fit with any other coin:
 ```
-COIN_NAME="CARDbuyers"             # Name of the coin
-COIN_PATH="/usr/local/bin/"        # NOT required parameter, location of the daemon and cli (only required if they're not in /usr/local/bin/ or /usr/bin/)
-COIN_DAEMON="CARDbuyersd"          # Name of the daemon
-COIN_CLI="CARDbuyers-cli"          # Name of the cli
-COIN_FOLDER="/root/.CARDbuyers"    # Folder where the conf file and blockchain is stored
-COIN_CONFIG="CARDbuyers.conf"      # Name of the conf file
-RPC_PORT=48451                     # NOT required parameter, on some coins it will start from 1024 if they don't have a rpcport parameter in the .conf file or if their port number is higher than 49151.
-COIN_SERVICE="CARDbuyers.service"  # NOT required parameter, if you have a service for the main node, add this parameter for the systemctlall and bootstrap commands
+COIN_NAME="OtherCoin"             # Name of the coin
+COIN_PATH="/usr/local/bin/"       # NOT required parameter, location of the daemon and cli (only required if they're not in /usr/local/bin/ or /usr/bin/)
+COIN_DAEMON="OtherCoind"          # Name of the daemon
+COIN_CLI="OtherCoin-cli"          # Name of the cli
+COIN_FOLDER="/root/.OtherCoin"    # Folder where the conf file and blockchain are stored
+COIN_CONFIG="OtherCoin.conf"      # Name of the conf file
+RPC_PORT=45454                    # NOT required parameter, it's just to force to start looking from a specific rpc port for those coins that doesn't have a rpcport parameter in the .conf file or that the main node rpc port is not between 1024 and 49451 (otherwise it will start looking at 1024).
+COIN_SERVICE="OtherCoin.service"  # NOT required parameter, if you have a service for the main node, add this parameter for the systemctlall and bootstrap commands.
 ```
 As with the <b>Usage example</b>, you just need to type these commands to create a new duplicated masternode:
 ```
@@ -125,7 +126,7 @@ dupmn install othercoin
 
 # <a name ="considerations"></a> Considerations
 
-A VPS doesn't have unlimited resources, creating too many instances may cause Out-Of-Memory error since MNs are a bit "RAM hungry" (can be partially fixed with `dupmn swapfile` command), there's also a limited hard-disk space and the blockchain increases in size everyday (so be sure to have a lot of free hard disk space, can be checked with `df -h`), and VPS providers usually puts a limit on monthly network bandwith (so running too many instances may get you to that limit).
+A VPS doesn't have unlimited resources, creating too many instances may cause Out-Of-Memory error since MNs are a bit "RAM hungry" (can be partially fixed with [`dupmn swapfile`](https://github.com/neo3587/dupmn/wiki/Commands#dupmn-swapfile-size_in_mbytes) command), there's also a limited hard-disk space and the blockchain increases in size everyday (so be sure to have a lot of free hard disk space, can be checked with `df -h`), and VPS providers usually puts a limit on monthly network bandwith (so running too many instances may get you to that limit).
 
 # <a name ="additional"></a> Additional
 
