@@ -114,7 +114,8 @@ function configure_systemd() {
 	chmod +x /etc/systemd/system/$coin_name-$1.service
 
 	systemctl daemon-reload
-	[[ -n $install_bootstrap ]] && cmd_bootstrap $1 0 1 || systemctl start $coin_name-$1.service
+	[[ -n $install_bootstrap ]] && cmd_bootstrap $1 0 1 
+	systemctl start $coin_name-$1.service
 	systemctl enable $coin_name-$1.service > /dev/null 2>&1
 
 	if [[ -z "$(ps axo cmd:100 | egrep $coin_name-$1)" ]]; then
@@ -623,28 +624,28 @@ function cmd_swapfile() {
 }
 function cmd_help() {
 	echo -e "Options:\
-			\n  - ${YELLOW}dupmn profadd <prof_file> [prof_name]             ${NC}Adds a profile that will be used to create duplicates of the masternode, it will use the COIN_NAME parameter as name if a prof_name is not provided.\
-			\n  - ${YELLOW}dupmn profdel <prof_name>                         ${NC}Deletes the given profile name, this will uninstall too any duplicated instance that uses this profile.\
-			\n  - ${YELLOW}dupmn install <prof_name> [params]                ${NC}Install a new instance based on the parameters of the given profile name.\
+			\n  - ${YELLOW}dupmn profadd <prof_file> [prof_name]         ${NC}Adds a profile that will be used to create duplicates of the masternode, it will use the COIN_NAME parameter as name if a prof_name is not provided.\
+			\n  - ${YELLOW}dupmn profdel <prof_name>                     ${NC}Deletes the given profile name, this will uninstall too any duplicated instance that uses this profile.\
+			\n  - ${YELLOW}dupmn install <prof_name> [params]            ${NC}Install a new instance based on the parameters of the given profile name.\
 			\n      ${YELLOW}[params]${NC} list:\
 			\n        ${GREEN}-ip=${NC}IP               Use a specific IPv4 or IPv6 (BETA STATE).\
 			\n        ${GREEN}-rpcport=${NC}PORT        Use a specific port for RPC commands (must be valid and not in use).\
 			\n        ${GREEN}-privkey=${NC}PRIVATEKEY  Set a user-defined masternode private key.\
 			\n        ${GREEN}-bootstrap${NC}           Apply a bootstrap during the installation.\
-			\n  - ${YELLOW}dupmn reinstall <prof_name> <number> [params]     ${NC}Reinstalls the specified instance, this is just in case if the instance is giving problems.\
+			\n  - ${YELLOW}dupmn reinstall <prof_name> <number> [params] ${NC}Reinstalls the specified instance, this is just in case if the instance is giving problems.\
 			\n      ${YELLOW}[params]${NC} list:\
 			\n        ${GREEN}-ip=${NC}IP               Use a specific IPv4 or IPv6 (BETA STATE).\
 			\n        ${GREEN}-rpcport=${NC}PORT        Use a specific port for RPC commands (must be valid and not in use).\
 			\n        ${GREEN}-privkey=${NC}PRIVATEKEY  Set a user-defined masternode private key.\
 			\n        ${GREEN}-bootstrap${NC}           Apply a bootstrap during the reinstallation.\
-			\n  - ${YELLOW}dupmn uninstall <prof_name> <number|all>          ${NC}Uninstall the specified instance of the given profile name, you can put ${YELLOW}all${NC} instead of a number to uninstall all the duplicated instances.\
-			\n  - ${YELLOW}dupmn bootstrap <prof_name> <number> [number]     ${NC}Copies the chain from the main node to a dupe or optionally from one dupe to another one.\
-			\n  - ${YELLOW}dupmn iplist                                      ${NC}Shows all your configurated IPv4 and IPv6.\
-			\n  - ${YELLOW}dupmn rpcchange <prof_name> <number> [port]       ${NC}Changes the RPC port used from the given number instance with the new one (or finds a new one by itself if no port is given).\
-			\n  - ${YELLOW}dupmn systemctlall <prof_name> <command>          ${NC}Applies the systemctl command to all the duplicated instances of the given profile name (but not the main instance).\
-			\n  - ${YELLOW}dupmn list [prof_name]                            ${NC}Shows the amount of duplicated instances of every masternode, if a profile name is provided, it lists an extended info of the profile instances.\
-			\n  - ${YELLOW}dupmn swapfile <size_in_mbytes>                   ${NC}Creates, changes or deletes (if parameter is 0) a swapfile of the given size in MB to increase the virtual memory.\
-			\n  - ${YELLOW}dupmn update                                      ${NC}Checks the last version of the script and updates it if necessary.\
+			\n  - ${YELLOW}dupmn uninstall <prof_name> <number|all>      ${NC}Uninstall the specified instance of the given profile name, you can put ${YELLOW}all${NC} instead of a number to uninstall all the duplicated instances.\
+			\n  - ${YELLOW}dupmn bootstrap <prof_name> <number> [number] ${NC}Copies the chain from the main node to a dupe or optionally from one dupe to another one.\
+			\n  - ${YELLOW}dupmn iplist                                  ${NC}Shows all your configurated IPv4 and IPv6.\
+			\n  - ${YELLOW}dupmn rpcchange <prof_name> <number> [port]   ${NC}Changes the RPC port used from the given number instance with the new one (or finds a new one by itself if no port is given).\
+			\n  - ${YELLOW}dupmn systemctlall <prof_name> <command>      ${NC}Applies the systemctl command to all the duplicated instances of the given profile name (but not the main instance).\
+			\n  - ${YELLOW}dupmn list [prof_name]                        ${NC}Shows the amount of duplicated instances of every masternode, if a profile name is provided, it lists an extended info of the profile instances.\
+			\n  - ${YELLOW}dupmn swapfile <size_in_mbytes>               ${NC}Creates, changes or deletes (if parameter is 0) a swapfile of the given size in MB to increase the virtual memory.\
+			\n  - ${YELLOW}dupmn update                                  ${NC}Checks the last version of the script and updates it if necessary.\
 			\n**NOTE**: ${YELLOW}<parameter>${NC} means required, ${YELLOW}[parameter]${NC} means optional."
 }
 function cmd_update() {
@@ -873,9 +874,8 @@ function main() {
 			fi
 			load_profile "$2" "1"
 			[[ ! -z "$4" ]] && instance_valid "$4" "1"
-			#[[ "$3" != "all" ]] && instance_valid "$3" "1" || [[ -z "$4" ]] && echo -e "You must provide a number when using ${YELLOW}all${NC} to get a source for the bootstrap" && exit
 			instance_valid "$3" "1"
-			cmd_bootstrap $(($3)) $([[ -z "$4" ]] && echo "0 1" || echo $(($4)))
+			cmd_bootstrap $(($3)) $(($4)) $([[ -z "$4" ]] && echo "1")
 			;;
 		"iplist")
 			cmd_iplist
@@ -922,4 +922,3 @@ function main() {
 }
 
 main $@
-
