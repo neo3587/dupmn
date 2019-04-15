@@ -105,7 +105,7 @@ Using `dupmn install CARDbuyers` will show you the masternode private key for th
 
 # <a name ="profile-creation"></a> Profile creation
 
-Using the CARDbuyers.dmn profile as example, you can create your own profile to fit with any other coin:
+You can easily create your own profile to fit with any other coin:
 ```
 COIN_NAME="OtherCoin"             # Name of the coin
 COIN_PATH="/usr/local/bin/"       # NOT required parameter, location of the daemon and cli (only required if they're not in /usr/local/bin/ or /usr/bin/)
