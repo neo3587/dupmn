@@ -4,7 +4,7 @@
 # Source: https://github.com/neo3587/dupmn
 
 # TODO:
-# - apply a command to all dupe folders ??
+# - dupmn help [command]
 # - dupmn ipadd <ip> <netmask> <inc> # may require hard reset
 # - dupmn ipdel <ip> # not main one
 # options (all of them requires a lot of debug for ipadd and ipdel):
@@ -38,6 +38,7 @@ readonly UNDERLINE='\e[1;4m'
 readonly NC='\e[0m'
 
 
+profile_name=""
 coin_name=""
 coin_daemon=""
 coin_cli=""
@@ -130,7 +131,7 @@ function configure_systemd() {
 	fi
 }
 function wallet_loaded() {
-	# [$1 = dup_count] | [$2 = wait_timeout]
+	# [$1 = dup_number] | [$2 = wait_timeout]
 	exec 2> /dev/null
 	function check_wallet_response() {
 		[[ $(is_number $([[ $1 -gt 0 ]] && echo $($coin_cli-$(($1)) getblockcount) || echo $($exec_coin_cli getblockcount))) ]] && echo "1"
@@ -463,51 +464,81 @@ function cmd_iplist() {
 function cmd_bootstrap() {
 	# <$1 = destiny> | <$2 = origin> | [$3 = try_dupes]
 
-	function get_folder() {
-		echo $coin_folder$([[ $1 -gt 0 ]] && echo $1 || echo "")/
-	}
-	function copy_chain() {
-		# <$1 = origin> | <$2 = destiny>
-		local dest_loaded=$(wallet_loaded $2)
-		if [[ -n "$dest_loaded" ]]; then
-			systemctl stop $service_1 
-			[[ $($coin_cli-$2 stop 2> /dev/null) ]] && sleep 3
-		fi
-		echo "Copying stored chain from node $1 to $2... (may take a while)"
-		for x in $(ls $(get_folder $2) | grep -v ".conf\|wallet.dat"); do
-			rm -rf $(get_folder $2)$x;
-		done
-		rsync -adm --ignore-existing --info=progress2 $(get_folder $1) $(get_folder $2)
-		sleep 1
-		[[ -n "$dest_loaded" ]] && systemctl start $service_1 && echo -e "Reactivating node $2..." && wallet_loaded $2 20 > /dev/null
-	}
-
-	local service_1=$([[ $1 -gt 0 ]] && echo "$coin_name-$1.service" || echo $coin_service)
-	local service_2=$([[ $2 -gt 0 ]] && echo "$coin_name-$2.service" || echo $coin_service)
-
-	if [[ $1 -eq $2 ]]; then
-		echo "You cannot use the same node for the chain copy... that doesn't makes sense"
-	elif [[ ("$1" == "0" || "$2" == "0") && $(wallet_loaded) && (-z "$coin_service" || ! -f /etc/systemd/system/$coin_service) ]]; then 
+	function main_mn_try_bootstrap() {
+		# <$1 = destiny> | <$2 = origin> | [$3 = try_dupes]
 		[[ -z "$coin_service" ]] && echo -e "${MAGENTA}Main MN service not detected in the profile, can't temporary stop the main node to copy the chain.${NC}" || echo -e "${MAGENTA}Main MN service ($coin_service) not found in /etc/systemd/system${NC}"
 		if [[ "$2" == "0" && "$3" == "1" && $dup_count -ge 2 ]]; then
 			echo -e "Trying to use the first dupe available for the bootstrap..."
-			cmd_bootstrap $1 $([[ "$1" == "1" ]] && echo 2 || echo 1)
+			bootstrap_proc $1 $([[ "$1" == "1" ]] && echo 2 || echo 1)
 			return
 		fi
 		echo -e "Main masternode must be stopped to copy the chain, use ${GREEN}$coin_cli stop${NC} to stop the main node."
 		[[ "$2" == "0" ]] && echo -e "Optionally you can put use a dupe as source of the chain files, example: ${YELLOW}dupmn bootstrap PROFILE 2 1${NC} (copy dupe 1 to dupe 2)."
 		echo -e "NOTE: Some main nodes may need to stop a systemd service instead, like ${GREEN}systemctl stop $coin_name.service${NC}."
-		return
-	#elif [[ "$2" == "all" ]]; then
-	elif [[ ! $(wallet_loaded $2) ]]; then 
-		copy_chain $2 $1
+	}
+
+	function bootstrap_proc() {
+		# <$1 = destiny> | <$2 = origin> | [$3 = try_dupes]
+
+		function get_folder() {
+			echo $coin_folder$([[ $1 -gt 0 ]] && echo $1 || echo "")/
+		}
+		function copy_chain() {
+			# <$1 = origin> | <$2 = destiny>
+			local dest_loaded=$(wallet_loaded $2)
+			if [[ $dest_loaded ]]; then
+				systemctl stop $service_1 
+				[[ $($coin_cli-$2 stop 2> /dev/null) ]] && sleep 3
+			fi
+			echo "Copying stored chain from node $1 to $2... (may take a while)"
+			for x in $(ls $(get_folder $2) | grep -v ".conf\|wallet.dat"); do
+				rm -rf $(get_folder $2)$x;
+			done
+			rsync -adm --ignore-existing --info=progress2 $(get_folder $1) $(get_folder $2)
+			if [[ $dest_loaded ]]; then
+				systemctl start $service_1
+				echo -e "Reactivating node $2..."
+				(wallet_loaded $2 20 > /dev/null)
+			fi
+		}
+
+		local service_1=$([[ $1 -gt 0 ]] && echo "$coin_name-$1.service" || echo "$coin_service")
+		local service_2=$([[ $2 -gt 0 ]] && echo "$coin_name-$2.service" || echo "$coin_service")
+
+		if [[ $1 == $2 ]]; then
+			echo "You cannot use the same node for the chain copy... that doesn't makes sense"
+		elif [[ ("$1" == "0" || "$2" == "0") && $(wallet_loaded) && (-z "$coin_service" || ! -f /etc/systemd/system/$coin_service) ]]; then 
+			main_mn_try_bootstrap $1 $2 $3
+		elif [[ ! $(wallet_loaded $2) ]]; then 
+			copy_chain $2 $1
+		else
+			systemctl stop $service_2
+			[[ $($coin_cli-$2 stop 2> /dev/null) ]] && sleep 3
+			copy_chain $2 $1
+			systemctl start $service_2
+			echo -e "Reactivating node $2..."
+			(wallet_loaded $2 20 > /dev/null)
+		fi
+	}
+
+	if [[ "$1" == "all" ]]; then
+		local origin_service=$([[ $2 -gt 0 ]] && echo "$coin_name-$2.service" || echo "$coin_service")
+		local origin_loaded=$(wallet_loaded $2)
+		if [[ $origin_loaded ]]; then
+			[[ "$2" == "0" && (-z "$coin_service" || ! -f /etc/systemd/system/$coin_service) ]] && main_mn_try_bootstrap $1 $2 && return
+			systemctl stop $origin_service 
+			[[ $($coin_cli-$2 stop 2> /dev/null) ]] && sleep 3
+		fi
+		for (( i=0; i<=$dup_count; i++ )); do
+			[[ $i != $2 ]] && bootstrap_proc $i $2
+		done
+		if [[ $origin_loaded ]]; then
+			systemctl start $origin_service
+			echo -e "Reactivating node $2..."
+			(wallet_loaded $2 20 > /dev/null)
+		fi
 	else
-		systemctl stop $service_2
-		[[ $($coin_cli-$2 stop 2> /dev/null) ]] && sleep 3
-		copy_chain $2 $1
-		systemctl start $service_2
-		echo -e "Reactivating node $2..."
-		wallet_loaded $2 20 > /dev/null
+		bootstrap_proc $1 $2 $3
 	fi
 }
 function cmd_rpcchange() {
@@ -624,28 +655,28 @@ function cmd_swapfile() {
 }
 function cmd_help() {
 	echo -e "Options:\
-			\n  - ${YELLOW}dupmn profadd <prof_file> [prof_name]         ${NC}Adds a profile that will be used to create duplicates of the masternode, it will use the COIN_NAME parameter as name if a prof_name is not provided.\
-			\n  - ${YELLOW}dupmn profdel <prof_name>                     ${NC}Deletes the given profile name, this will uninstall too any duplicated instance that uses this profile.\
-			\n  - ${YELLOW}dupmn install <prof_name> [params]            ${NC}Install a new instance based on the parameters of the given profile name.\
+			\n  - ${YELLOW}dupmn profadd <prof_file> [prof_name]             ${NC}Adds a profile that will be used to create duplicates of the masternode, it will use the COIN_NAME parameter as name if a prof_name is not provided.\
+			\n  - ${YELLOW}dupmn profdel <prof_name>                         ${NC}Deletes the given profile name, this will uninstall too any duplicated instance that uses this profile.\
+			\n  - ${YELLOW}dupmn install <prof_name> [params...]             ${NC}Install a new instance based on the parameters of the given profile name.\
 			\n      ${YELLOW}[params]${NC} list:\
 			\n        ${GREEN}-ip=${NC}IP               Use a specific IPv4 or IPv6 (BETA STATE).\
 			\n        ${GREEN}-rpcport=${NC}PORT        Use a specific port for RPC commands (must be valid and not in use).\
 			\n        ${GREEN}-privkey=${NC}PRIVATEKEY  Set a user-defined masternode private key.\
 			\n        ${GREEN}-bootstrap${NC}           Apply a bootstrap during the installation.\
-			\n  - ${YELLOW}dupmn reinstall <prof_name> <number> [params] ${NC}Reinstalls the specified instance, this is just in case if the instance is giving problems.\
+			\n  - ${YELLOW}dupmn reinstall <prof_name> <number> [params...]  ${NC}Reinstalls the specified instance, this is just in case if the instance is giving problems.\
 			\n      ${YELLOW}[params]${NC} list:\
 			\n        ${GREEN}-ip=${NC}IP               Use a specific IPv4 or IPv6 (BETA STATE).\
 			\n        ${GREEN}-rpcport=${NC}PORT        Use a specific port for RPC commands (must be valid and not in use).\
 			\n        ${GREEN}-privkey=${NC}PRIVATEKEY  Set a user-defined masternode private key.\
 			\n        ${GREEN}-bootstrap${NC}           Apply a bootstrap during the reinstallation.\
-			\n  - ${YELLOW}dupmn uninstall <prof_name> <number|all>      ${NC}Uninstall the specified instance of the given profile name, you can put ${YELLOW}all${NC} instead of a number to uninstall all the duplicated instances.\
-			\n  - ${YELLOW}dupmn bootstrap <prof_name> <number> [number] ${NC}Copies the chain from the main node to a dupe or optionally from one dupe to another one.\
-			\n  - ${YELLOW}dupmn iplist                                  ${NC}Shows all your configurated IPv4 and IPv6.\
-			\n  - ${YELLOW}dupmn rpcchange <prof_name> <number> [port]   ${NC}Changes the RPC port used from the given number instance with the new one (or finds a new one by itself if no port is given).\
-			\n  - ${YELLOW}dupmn systemctlall <prof_name> <command>      ${NC}Applies the systemctl command to all the duplicated instances of the given profile name (but not the main instance).\
-			\n  - ${YELLOW}dupmn list [prof_name]                        ${NC}Shows the amount of duplicated instances of every masternode, if a profile name is provided, it lists an extended info of the profile instances.\
-			\n  - ${YELLOW}dupmn swapfile <size_in_mbytes>               ${NC}Creates, changes or deletes (if parameter is 0) a swapfile of the given size in MB to increase the virtual memory.\
-			\n  - ${YELLOW}dupmn update                                  ${NC}Checks the last version of the script and updates it if necessary.\
+			\n  - ${YELLOW}dupmn uninstall <prof_name> <number|all>          ${NC}Uninstall the specified instance of the given profile name, you can put ${YELLOW}all${NC} instead of a number to uninstall all the duplicated instances.\
+			\n  - ${YELLOW}dupmn bootstrap <prof_name> <number|all> [number] ${NC}Copies the chain from the main node to a dupe or optionally from one dupe to another one.\
+			\n  - ${YELLOW}dupmn iplist                                      ${NC}Shows all your configurated IPv4 and IPv6.\
+			\n  - ${YELLOW}dupmn rpcchange <prof_name> <number> [port]       ${NC}Changes the RPC port used from the given number instance with the new one (or finds a new one by itself if no port is given).\
+			\n  - ${YELLOW}dupmn systemctlall <prof_name> <command>          ${NC}Applies the systemctl command to all the duplicated instances of the given profile name (but not the main instance).\
+			\n  - ${YELLOW}dupmn list [prof_name]                            ${NC}Shows the amount of duplicated instances of every masternode, if a profile name is provided, it lists an extended info of the profile instances.\
+			\n  - ${YELLOW}dupmn swapfile <size_in_mbytes>                   ${NC}Creates, changes or deletes (if parameter is 0) a swapfile of the given size in MB to increase the virtual memory.\
+			\n  - ${YELLOW}dupmn update                                      ${NC}Checks the last version of the script and updates it if necessary.\
 			\n**NOTE**: ${YELLOW}<parameter>${NC} means required, ${YELLOW}[parameter]${NC} means optional."
 }
 function cmd_update() {
@@ -671,7 +702,6 @@ function cmd_update() {
 	fi
 	exit
 }
-
 
 
 function main() {
@@ -701,6 +731,7 @@ function main() {
 			exit
 		fi
 
+		profile_name="$1"
 		coin_name="${prof[COIN_NAME]}"
 		coin_daemon="${prof[COIN_DAEMON]}"
 		coin_cli="${prof[COIN_CLI]}"
@@ -739,7 +770,7 @@ function main() {
 			echo -e "Instance ${CYAN}0${NC} is a reference to the main masternode, not a duplicated one, can't use this one"
 			exit
 		elif [[ $(($1)) -gt $dup_count ]]; then
-			echo -e "Instance ${CYAN}$(($1))${NC} doesn't exists, there are only ${CYAN}$dup_count${NC} instances of ${BLUE}$1${NC}"
+			echo -e "Instance ${CYAN}$(($1))${NC} doesn't exists, there are only ${CYAN}$dup_count${NC} instances of ${BLUE}$profile_name${NC}"
 			exit
 		fi
 	}
@@ -869,13 +900,13 @@ function main() {
 			;;
 		"bootstrap")
 			if [[ -z "$3" ]]; then
-				echo -e "${YELLOW}dupmn bootstrap <prof_name> <number> [number]${NC} requires a profile name and a number as parameters"
+				echo -e "${YELLOW}dupmn bootstrap <prof_name> <number|all> [number]${NC} requires a profile name and a number as parameters"
 				exit
 			fi
 			load_profile "$2" "1"
+			[[ "$3" != "all" ]] && instance_valid "$3" "1"
 			[[ ! -z "$4" ]] && instance_valid "$4" "1"
-			instance_valid "$3" "1"
-			cmd_bootstrap $(($3)) $(($4)) $([[ -z "$4" ]] && echo "1")
+			cmd_bootstrap $([[ "$3" == "all" ]] && echo $3 || echo $(($3))) $(($4)) $([[ -z "$4" ]] && echo "1")
 			;;
 		"iplist")
 			cmd_iplist
