@@ -24,32 +24,32 @@ Check the [Usage example](#usage-example) to see the guide of the steps to follo
 
 # <a name ="commands"></a> Commands
 
-- [`dupmn profadd <profile_file> [new_profile_name]`](https://github.com/neo3587/dupmn/wiki/Commands#dupmn-profadd-profile_file-profile_name) : Adds a profile with the given name that will be used to create duplicates of the masternode.
-- [`dupmn profdel <profile_name>`](https://github.com/neo3587/dupmn/wiki/Commands#dupmn-profdel-prof_name) : Deletes the saved profile with the given name and uninstalls the duplicated instances that uses that profile.
-- [`dupmn install <profile_name> [optional_params]`](https://github.com/neo3587/dupmn/wiki/Commands#dupmn-install-prof_name-params) : Install a new instance based on the parameters of the given profile name.
+- [`dupmn profadd <profile_file> [new_profile_name]`](https://github.com/neo3587/dupmn/wiki/Commands#profadd) : Adds a profile with the given name that will be used to create duplicates of the masternode.
+- [`dupmn profdel <profile_name>`](https://github.com/neo3587/dupmn/wiki/Commands#profdel) : Deletes the saved profile with the given name and uninstalls the duplicated instances that uses that profile.
+- [`dupmn install <profile_name> [optional_params]`](https://github.com/neo3587/dupmn/wiki/Commands#install) : Install a new instance based on the parameters of the given profile name.
 `[optional_params]` list:  
 `-ip=IP` : Use a specific IPv4 or IPv6 (BETA STATE).  
 `-rpcport=PORT` : Use a specific port for RPC commands (must be valid and not in use).  
 `-privkey=PRIVATEKEY` : Set a user-defined masternode private key.  
 `-bootstrap` : Apply a bootstrap during the installation.  
-- [`dupmn reinstall <profile_name> <number> [optional_params]`](https://github.com/neo3587/dupmn/wiki/Commands#dupmn-reinstall-prof_name--params) : Reinstalls the specified instance, this is just in case if the instance is giving problems.
+- [`dupmn reinstall <profile_name> <number> [optional_params]`](https://github.com/neo3587/dupmn/wiki/Commands#reinstall) : Reinstalls the specified instance, this is just in case if the instance is giving problems.
 `[optional_params]` list:  
 `-ip=IP` : Use a specific IPv4 or IPv6 (BETA STATE).  
 `-rpcport=PORT` : Use a specific port for RPC commands (must be valid and not in use).  
 `-privkey=PRIVATEKEY` : Set a user-defined masternode private key.  
 `-bootstrap` : Apply a bootstrap during the reinstallation.  
-- [`dupmn uninstall <profile_name> <number|all>`](https://github.com/neo3587/dupmn/wiki/Commands#dupmn-uninstall-prof_name-) : Uninstall the specified instance of the given profile name, you can put `all` instead of a number to uninstall all the duplicated instances.
-- [`dupmn bootstrap <profile_name> <number|all> [number]`](https://github.com/neo3587/dupmn/wiki/Commands#dupmn-bootstrap-prof_name--number) : Copies the main node stored chain to a dupe, using `all` instead of a number will apply a bootstrap to all the other nodes, optionally you can put a dupe number to copy from one dupe to another.
-- [`dupmn iplist`](https://github.com/neo3587/dupmn/wiki/Commands#dupmn-iplist) : Shows your current IPv4 and IPv6 addresses.
-- [`dupmn rpcchange <profile_name> <number> [port]`](https://github.com/neo3587/dupmn/wiki/Commands#dupmn-rpcchange-prof_name--port) : Changes the rpc port of the given instance number, this is only in case that by chance it causes a conflict with another application that uses the same port (if no port is provided, it will automatically find any free port).
-- [`dupmn systemctlall <profile_name> <command>`](https://github.com/neo3587/dupmn/wiki/Commands#dupmn-systemctlall-prof_name-) : Applies the systemctl command to all services created with the given profile (will only affect the main node too if the profile haves the COIN_SERVICE parameter).
-- [`dupmn list [profile_name]`](https://github.com/neo3587/dupmn/wiki/Commands#dupmn-list-prof_name) : Shows the amount of duplicated instances of every masternode, if a profile name is provided, it lists an extended info of the profile instances.
-- [`dupmn swapfile <size_in_mbytes>`](https://github.com/neo3587/dupmn/wiki/Commands#dupmn-swapfile-size_in_mbytes) : Creates/changes or deletes (if value is 0) a swapfile to increase the virtual memory, allowing to fit more masternodes in the same VPS, recommended size is 150 MB for each masternode (example: 3 masternodes => `dupmn swapfile 450`), note that some masternodes might be more 'RAM hungry'.
-- [`dupmn help`](https://github.com/neo3587/dupmn/wiki/Commands#dupmn-help) : Just shows the available commands in the console.
-- [`dupmn update`](https://github.com/neo3587/dupmn/wiki/Commands#dupmn-update) : Checks the last version of the script and updates it if necessary.
+- [`dupmn uninstall <profile_name> <number|all>`](https://github.com/neo3587/dupmn/wiki/Commands#uninstall) : Uninstall the specified instance of the given profile name, you can put `all` instead of a number to uninstall all the duplicated instances.
+- [`dupmn bootstrap <profile_name> <number|all> [number]`](https://github.com/neo3587/dupmn/wiki/Commands#bootstrap) : Copies the main node stored chain to a dupe, using `all` instead of a number will apply a bootstrap to all the other nodes, optionally you can put a dupe number to copy from one dupe to another.
+- [`dupmn iplist`](https://github.com/neo3587/dupmn/wiki/Commands#iplist) : Shows your current IPv4 and IPv6 addresses.
+- [`dupmn rpcchange <profile_name> <number> [port]`](https://github.com/neo3587/dupmn/wiki/Commands#rpcchange) : Changes the rpc port of the given instance number, this is only in case that by chance it causes a conflict with another application that uses the same port (if no port is provided, it will automatically find any free port).
+- [`dupmn systemctlall <profile_name> <command>`](https://github.com/neo3587/dupmn/wiki/Commands#systemctlall) : Applies the systemctl command to all services created with the given profile (will only affect the main node too if the profile haves the COIN_SERVICE parameter).
+- [`dupmn list [profile_name]`](https://github.com/neo3587/dupmn/wiki/Commands#list) : Shows the amount of duplicated instances of every masternode, if a profile name is provided, it lists an extended info of the profile instances.
+- [`dupmn swapfile <size_in_mbytes>`](https://github.com/neo3587/dupmn/wiki/Commands#swapfile) : Creates/changes or deletes (if value is 0) a swapfile to increase the virtual memory, allowing to fit more masternodes in the same VPS, recommended size is 150 MB for each masternode (example: 3 masternodes => `dupmn swapfile 450`), note that some masternodes might be more 'RAM hungry'.
+- [`dupmn help`](https://github.com/neo3587/dupmn/wiki/Commands#help) : Just shows the available commands in the console.
+- [`dupmn update`](https://github.com/neo3587/dupmn/wiki/Commands#update) : Checks the last version of the script and updates it if necessary.
 
 *Note: `<parameter>` means required, `[parameter]` means optional.*  
-*Note 2: Check the [Commands Page](https://github.com/neo3587/dupmn/wiki/Commands#dupmn-update) for extended info and usage examples of each command.*
+*Note 2: Check the [Commands Page](https://github.com/neo3587/dupmn/wiki/Commands) for extended info and usage examples of each command.*
 
 # <a name ="usage-example"></a> Usage example
 
