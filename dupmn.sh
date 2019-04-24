@@ -4,6 +4,7 @@
 # Source: https://github.com/neo3587/dupmn
 
 # TODO:
+# - dupmn profadd -> if no COIN_SERVICE => warn & ask for creation ||| on creation if $coin_name.service exists => warn
 # - dupmn help [command]
 # - dupmn ipadd <ip> <netmask> <inc> # may require hard reset
 # - dupmn ipdel <ip> # not main one
@@ -92,6 +93,8 @@ function is_number() {
 }
 function configure_systemd() {
 	# <$1 = instance_number>
+
+	# if -z $1 => enable & no start & use $coin_name without -$1
 
 	echo -e "[Unit]\
 	\nDescription=$coin_name-$1 service\
@@ -307,7 +310,7 @@ function cmd_profadd() {
 	fi
 
 	echo -e "${BLUE}$prof_name${NC} profile successfully added, use ${GREEN}dupmn install $prof_name${NC} to create a new instance of the masternode"
-	#[[ -z "${prof[COIN_SERVICE]}" ]] && echo -e "\nNOTE: Looks like that the provided profile doesn't have a ${CYAN}\"COIN_SERVICE\"${NC} parameter, you may want to take a look to this: ${UNDERLINE}${CYAN}https://github.com/neo3587/dupmn/wiki/Create-a-service${NC}"
+	[[ -z "${prof[COIN_SERVICE]}" ]] && echo -e "${YELLOW}WARNING:${NC} The provided profile doesn't have a ${CYAN}\"COIN_SERVICE\"${NC} parameter, the dupmn script won't be able to stop the main node on some commands"
 }
 function cmd_profdel() {
 	# <$1 = profile_name>
