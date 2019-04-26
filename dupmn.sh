@@ -4,7 +4,8 @@
 # Source: https://github.com/neo3587/dupmn
 
 # TODO:
-# - dupmn profadd -> if no COIN_SERVICE => warn & ask for creation ||| on creation if $coin_name.service exists => warn
+# - dupmn reinstall <number|all> [params...] ?
+# - dupmn reinstall <number|all> -updaterefs ?
 # - dupmn help [command]
 # - dupmn ipadd <ip> <netmask> <inc> # may require hard reset
 # - dupmn ipdel <ip> # not main one
@@ -26,6 +27,8 @@
 #   2. bind dupe on unused port => need to check if actually can be activated
 #
 # list ifaces: ls folders from /sys/class/net/
+#
+# coin profile opt parameter => FORCE_IP=IPv4/IPv6
 #
 
 
@@ -56,6 +59,60 @@ new_key=""
 install_bootstrap=""
 
 
+function load_profile() {
+	# <$1 = profile_name> | [$2 = check_exec]
+
+	if [[ ! -f ".dupmn/$1" ]]; then
+		echo -e "${BLUE}$1${NC} profile hasn't been added"
+		exit
+	fi
+
+	local -A prof=$(get_conf .dupmn/$1)
+	local -A conf=$(get_conf .dupmn/dupmn.conf)
+
+	local CMD_ARRAY=(COIN_NAME COIN_DAEMON COIN_CLI COIN_FOLDER COIN_CONFIG)
+	for var in "${CMD_ARRAY[@]}"; do
+		if [[ ! "${!prof[@]}" =~ "$var" || -z "${prof[$var]}" ]]; then
+			echo -e "Seems like you modified something that was supposed to remain unmodified: ${MAGENTA}$var${NC} parameter should exists and have a assigned value in ${GREEN}.dupmn/$1${NC} file"
+			echo -e "You can fix it by adding the ${BLUE}$1${NC} profile again"
+			exit
+		fi
+	done
+	if [[ ! "${!conf[@]}" =~ "$1" || -z "${conf[$1]}" || ! $(is_number "${conf[$1]}") ]]; then
+		echo -e "Seems like you modified something that was supposed to remain unmodified: ${MAGENTA}$1${NC} parameter should exists and have a assigned number in ${GREEN}.dupmn/dupmn.conf${NC} file"
+		echo -e "You can fix it by adding ${MAGENTA}$1=0${NC} to the .dupmn/dupmn.conf file (replace the number 0 for the number of nodes installed with dupmn using the ${BLUE}$1${NC} profile)"
+		exit
+	fi
+
+	profile_name="$1"
+	coin_name="${prof[COIN_NAME]}"
+	coin_daemon="${prof[COIN_DAEMON]}"
+	coin_cli="${prof[COIN_CLI]}"
+	coin_folder="${prof[COIN_FOLDER]}"
+	coin_config="${prof[COIN_CONFIG]}"
+	rpc_port="${prof[RPC_PORT]}"
+	coin_service="${prof[COIN_SERVICE]}"
+	dup_count=$((${conf[$1]}))
+	exec_coin_daemon="${prof[COIN_PATH]}$coin_daemon"
+	exec_coin_cli="${prof[COIN_PATH]}$coin_cli"
+
+	if [[ "$2" == "1" ]]; then
+		if [[ ! -f "$exec_coin_daemon" ]]; then
+			exec_coin_daemon=$(which $coin_daemon)
+			if [[ ! -f "$exec_coin_daemon" ]]; then
+				echo -e "Can't locate ${GREEN}$coin_daemon${NC}, it must be at the defined path from ${CYAN}\"COIN_PATH\"${NC} or in ${CYAN}/usr/bin/${NC} or ${CYAN}/usr/local/bin/${NC}"
+				exit
+			fi
+		fi
+		if [[ ! -f "$exec_coin_cli" ]]; then
+			exec_coin_cli=$(which $coin_cli)
+			if [[ ! -f "$exec_coin_cli" ]]; then
+				echo -e "Can't locate ${GREEN}$coin_cli${NC}, it must be at the defined path from ${CYAN}\"COIN_PATH\"${NC} or in ${CYAN}/usr/bin/${NC} or ${CYAN}/usr/local/bin/${NC}"
+				exit
+			fi
+		fi
+	fi
+}
 function get_conf() {
 	# <$1 = conf_file>
 	local str_map="";
@@ -92,12 +149,12 @@ function is_number() {
 	[[ "$1" =~ ^[0-9]+$ ]] && echo "1"
 }
 function configure_systemd() {
-	# <$1 = instance_number>
+	# [$1 = instance_number]
 
-	# if -z $1 => enable & no start & use $coin_name without -$1
+	local service_name=$([[ -n $1 ]] && echo $coin_name-$1 || echo $coin_name)
 
 	echo -e "[Unit]\
-	\nDescription=$coin_name-$1 service\
+	\nDescription=$service_name service\
 	\nAfter=network.target\
 	\n\
 	\n[Service]\
@@ -114,20 +171,20 @@ function configure_systemd() {
 	\nStartLimitBurst=5\
 	\n\
 	\n[Install]\
-	\nWantedBy=multi-user.target" > /etc/systemd/system/$coin_name-$1.service
-	chmod +x /etc/systemd/system/$coin_name-$1.service
+	\nWantedBy=multi-user.target" > /etc/systemd/system/$service_name.service
+	chmod +x /etc/systemd/system/$service_name.service
 
 	systemctl daemon-reload
-	[[ -n $install_bootstrap ]] && cmd_bootstrap $1 0 1 
-	systemctl start $coin_name-$1.service
-	systemctl enable $coin_name-$1.service > /dev/null 2>&1
+	[[ -n $install_bootstrap ]] && cmd_bootstrap $1 0 1
+	[[ -n $1 ]] && systemctl start $service_name.service
+	systemctl enable $service_name.service > /dev/null 2>&1
 
-	if [[ -z "$(ps axo cmd:100 | egrep $coin_name-$1)" ]]; then
+	if [[ $1 && -z "$(ps axo cmd:100 | egrep $service_name)" ]]; then
 		echo -e "\n${RED}IMPORTANT!!!${NC} \
 			\nSeems like there might be a problem with the systemctl configuration, please investigate.\
 			\nYou should start by running the following commands:\
-			\n${GREEN}systemctl start  $coin_name-$2.service${NC}\
-			\n${GREEN}systemctl status $coin_name-$2.service${NC}\
+			\n${GREEN}systemctl start  $service_name.service${NC}\
+			\n${GREEN}systemctl status $service_name.service${NC}\
 			\n${GREEN}less /var/log/syslog${NC}\
 			\nThe most common causes of this might be that either you made something to a file that dupmn modifies or creates, or that you don't have enough free resources (usually memory).
 			\nThere's also the chance that this could be a false positive error (so actually everything is ok), anyway please use the commands above to investigate."
@@ -310,13 +367,24 @@ function cmd_profadd() {
 	fi
 
 	echo -e "${BLUE}$prof_name${NC} profile successfully added, use ${GREEN}dupmn install $prof_name${NC} to create a new instance of the masternode"
-	[[ -z "${prof[COIN_SERVICE]}" ]] && echo -e "${YELLOW}WARNING:${NC} The provided profile doesn't have a ${CYAN}\"COIN_SERVICE\"${NC} parameter, the dupmn script won't be able to stop the main node on some commands"
+
+	if [[ -z "${prof[COIN_SERVICE]}" ]]; then
+		echo -e "\n${YELLOW}WARNING:${NC} The provided profile doesn't have a ${CYAN}\"COIN_SERVICE\"${NC} parameter, the dupmn script won't be able to stop the main node on some commands"
+		read -r -p "Do you want to create a service for the main MN? [Y/n]`echo $'\n> '`" yesno
+		[[ ! $yesno =~ ^[Yy]$|^[Yy][Ee][Ss]$ ]] && echo -e "Main MN service creation cancelled" && exit
+		[[ -f /etc/systemd/system/${prof[COIN_NAME]}.service ]] && echo -e "There seems to be already a ${CYAN}${prof[COIN_NAME]}.service${NC} in ${MAGENTA}/etc/systemd/system/${NC}" && exit
+		[[ $(load_profile "$prof_name" "1") ]] && echo -e "Can't find the binaries of the main node to make the service, make sure that you have installed the masternode and retry this command to create a service" && exit
+		load_profile "$prof_name" "1"
+		configure_systemd
+		conf_set_value .dupmn/$prof_name "COIN_SERVICE" "\"${prof[COIN_NAME]}.service\"" "1"
+		echo -e "Service for ${BLUE}$prof_name${NC} main node created"
+	fi
 }
 function cmd_profdel() {
 	# <$1 = profile_name>
 
 	if [ $dup_count -gt 0 ]; then
-		read -r -p "All the dupes created with this profile will be deleted, are you sure to apply this command? [Y/n] " yesno
+		read -r -p "All the dupes created with this profile will be deleted, are you sure to apply this command? [Y/n]`echo $'\n> '`" yesno
 		[[ ! $yesno =~ ^[Yy]$|^[Yy][Ee][Ss]$ ]] && echo -e "Profile deletion cancelled" && exit
 		cmd_uninstall $1 all
 	fi
@@ -608,7 +676,7 @@ function cmd_list() {
 		function print_dup_info() {
 			local dup_ip=$(conf_get_value $coin_folder$1/$coin_config "masternodeaddr")
 			local online=$([[ $(wallet_loaded $1) ]] && echo 1 || echo 0)
-			local mnstatus=$([[ $online == 1 ]] && echo $([[ -z "$1" ]] && try_cmd $exec_coin_cli "masternodedebug" "masternode debug" || try_cmd $coin_cli-$1 "masternodedebug" "masternode debug"))
+			local mnstatus=$([[ $online == 1 ]] && try_cmd $([[ -z "$1" ]] && echo $exec_coin_cli || echo $coin_cli-$1) "masternodedebug" "masternode debug")
 			echo -e  "  online  : $([[ $online = 1 ]] && echo ${BLUE}true${NC} || echo ${RED}false${NC})\
 					$([[ -n $mnstatus ]] && echo "\n  status  : "${mnstatus//[$'\r\n']})\
 					\n  ip      : ${YELLOW}$([[ -z "$dup_ip" ]] && echo $(conf_get_value $coin_folder$1/$coin_config "externalip") || echo "$dup_ip")${NC}\
@@ -709,60 +777,6 @@ function cmd_update() {
 
 function main() {
 
-	function load_profile() {
-		# <$1 = profile_name> | [$2 = check_exec]
-
-		if [[ ! -f ".dupmn/$1" ]]; then
-			echo -e "${BLUE}$1${NC} profile hasn't been added"
-			exit
-		fi
-
-		local -A prof=$(get_conf .dupmn/$1)
-		local -A conf=$(get_conf .dupmn/dupmn.conf)
-
-		local CMD_ARRAY=(COIN_NAME COIN_DAEMON COIN_CLI COIN_FOLDER COIN_CONFIG)
-		for var in "${CMD_ARRAY[@]}"; do
-			if [[ ! "${!prof[@]}" =~ "$var" || -z "${prof[$var]}" ]]; then
-				echo -e "Seems like you modified something that was supposed to remain unmodified: ${MAGENTA}$var${NC} parameter should exists and have a assigned value in ${GREEN}.dupmn/$1${NC} file"
-				echo -e "You can fix it by adding the ${BLUE}$1${NC} profile again"
-				exit
-			fi
-		done
-		if [[ ! "${!conf[@]}" =~ "$1" || -z "${conf[$1]}" || ! $(is_number "${conf[$1]}") ]]; then
-			echo -e "Seems like you modified something that was supposed to remain unmodified: ${MAGENTA}$1${NC} parameter should exists and have a assigned number in ${GREEN}.dupmn/dupmn.conf${NC} file"
-			echo -e "You can fix it by adding ${MAGENTA}$1=0${NC} to the .dupmn/dupmn.conf file (replace the number 0 for the number of nodes installed with dupmn using the ${BLUE}$1${NC} profile)"
-			exit
-		fi
-
-		profile_name="$1"
-		coin_name="${prof[COIN_NAME]}"
-		coin_daemon="${prof[COIN_DAEMON]}"
-		coin_cli="${prof[COIN_CLI]}"
-		coin_folder="${prof[COIN_FOLDER]}"
-		coin_config="${prof[COIN_CONFIG]}"
-		rpc_port="${prof[RPC_PORT]}"
-		coin_service="${prof[COIN_SERVICE]}"
-		dup_count=$((${conf[$1]}))
-		exec_coin_daemon=${prof[COIN_PATH]}$coin_daemon
-		exec_coin_cli=${prof[COIN_PATH]}$coin_cli
-
-		if [[ "$2" == "1" ]]; then
-			if [[ ! -f "$exec_coin_daemon" ]]; then
-				exec_coin_daemon=$(which $coin_daemon)
-				if [[ ! -f "$exec_coin_daemon" ]]; then
-					echo -e "Can't locate ${GREEN}$coin_daemon${NC}, it must be at the defined path from ${CYAN}\"COIN_PATH\"${NC} or in ${CYAN}/usr/bin/${NC} or ${CYAN}/usr/local/bin/${NC}"
-					exit
-				fi
-			fi
-			if [[ ! -f "$exec_coin_cli" ]]; then
-				exec_coin_cli=$(which $coin_cli)
-				if [[ ! -f "$exec_coin_cli" ]]; then
-					echo -e "Can't locate ${GREEN}$coin_cli${NC}, it must be at the defined path from ${CYAN}\"COIN_PATH\"${NC} or in ${CYAN}/usr/bin/${NC} or ${CYAN}/usr/local/bin/${NC}"
-					exit
-				fi
-			fi
-		fi
-	}
 	function instance_valid() {
 		# <$1 = instance_number> | [$2 = allow number 0]
 
@@ -932,7 +946,7 @@ function main() {
 			cmd_systemctlall "$2" "$3"
 			;;
 		"list")
-			[[ -z "$2" ]] || load_profile "$2"
+			[[ -n "$2" ]] && load_profile "$2" "1"
 			cmd_list $2
 			;;
 		"swapfile")
