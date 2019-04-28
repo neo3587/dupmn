@@ -6,7 +6,6 @@
 # TODO:
 # - dupmn reinstall <number|all> [params...] ?
 # - dupmn reinstall <number|all> -updaterefs ?
-# - dupmn help [command]
 # - dupmn ipadd <ip> <netmask> <inc> # may require hard reset
 # - dupmn ipdel <ip> # not main one
 # options (all of them requires a lot of debug for ipadd and ipdel):
@@ -327,7 +326,7 @@ function netmask_cidr() {
 function cmd_profadd() {
 	# <$1 = profile_file> | [$2 = profile_name]
 
-	[[ ! -f $1 ]] && echo -e "${BLUE}$1${NC} file doesn't exists" && exit
+	[[ ! -f $1 ]] && echo -e "${BLUE}$1${NC} file doesn't exists" && return
 
 	local -A prof=$(get_conf $1)
 	local CMD_ARRAY=(COIN_NAME COIN_DAEMON COIN_CLI COIN_FOLDER COIN_CONFIG)
@@ -335,10 +334,10 @@ function cmd_profadd() {
 	for var in "${CMD_ARRAY[@]}"; do
 		if [[ ! "${!prof[@]}" =~ "$var" ]]; then
 			echo -e "${MAGENTA}$var${NC} doesn't exists in the supplied profile file"
-			exit
+			return
 		elif [[ -z "${prof[$var]}" ]]; then
 			echo -e "${MAGENTA}$var${NC} doesn't contain a value in the supplied profile file"
-			exit
+			return
 		fi
 	done
 
@@ -346,7 +345,7 @@ function cmd_profadd() {
 
 	if [[ "$prof_name" = "dupmn.conf" ]]; then
 		echo -e "From the infinite amount of possible names for the profile and you had to choose the only one that you can't use... for god sake..."
-		exit
+		return
 	fi
 
 	[[ ! -d ".dupmn" ]] && mkdir ".dupmn"
@@ -370,10 +369,16 @@ function cmd_profadd() {
 
 	if [[ -z "${prof[COIN_SERVICE]}" ]]; then
 		echo -e "\n${YELLOW}WARNING:${NC} The provided profile doesn't have a ${CYAN}\"COIN_SERVICE\"${NC} parameter, the dupmn script won't be able to stop the main node on some commands"
-		read -r -p "Do you want to create a service for the main MN? [Y/n]`echo $'\n> '`" yesno
-		[[ ! $yesno =~ ^[Yy]$|^[Yy][Ee][Ss]$ ]] && echo -e "Main MN service creation cancelled" && exit
-		[[ -f /etc/systemd/system/${prof[COIN_NAME]}.service ]] && echo -e "There seems to be already a ${CYAN}${prof[COIN_NAME]}.service${NC} in ${MAGENTA}/etc/systemd/system/${NC}" && exit
-		[[ $(load_profile "$prof_name" "1") ]] && echo -e "Can't find the binaries of the main node to make the service, make sure that you have installed the masternode and retry this command to create a service" && exit
+		read -r -p "Do you want to create a service for the main node? [Y/n]`echo $'\n> '`" yesno
+		[[ ! $yesno =~ ^[Yy]$|^[Yy][Ee][Ss]$ ]] && echo -e "Main node service creation cancelled" && return
+		if [[ -f /etc/systemd/system/${prof[COIN_NAME]}.service ]]; then
+			echo -e "${YELLOW}WARNING:${NC} There seems to be already a ${CYAN}${prof[COIN_NAME]}.service${NC} in ${MAGENTA}/etc/systemd/system/${NC}" 
+			read -r -p "Do you want to use it for the main MN? [Y/n]`echo $'\n> '`" yesno
+			[[ $yesno =~ ^[Yy]$|^[Yy][Ee][Ss]$ ]] && echo -e "${CYAN}${prof[COIN_NAME]}.service${NC} set as main node service" || return
+			conf_set_value .dupmn/$prof_name "COIN_SERVICE" "\"${prof[COIN_NAME]}.service\"" "1"
+			return
+		fi
+		[[ $(load_profile "$prof_name" "1") ]] && echo -e "${RED}ERROR:${NC} Can't find the binaries of the main node to make the service, make sure that you have installed the masternode and retry this command to create a service" && return
 		load_profile "$prof_name" "1"
 		configure_systemd
 		conf_set_value .dupmn/$prof_name "COIN_SERVICE" "\"${prof[COIN_NAME]}.service\"" "1"
@@ -419,7 +424,7 @@ function cmd_install() {
 		$(conf_set_value $new_folder/$coin_config "bind"           $ip         1)
 
 		if [[ -z $(conf_get_value $coin_folder/$coin_config "bind") ]]; then
-			echo "Applying a tiny modification into the main masternode conf file, this only will be applied this time..."
+			echo -e "Adding the ${CYAN}bind${NC} parameter to the main node conf file, this only will be applied this time..."
 			local main_ip=$(conf_get_value $new_folder/$coin_config "masternodeaddr")
 			$(conf_set_value $coin_folder/$coin_config "bind" $([[ -z "$main_ip" ]] && echo $(conf_get_value $coin_folder/$coin_config "externalip") || echo "$main_ip") 1)
 			if [[ $($exec_coin_cli stop 2> /dev/null) ]]; then
@@ -748,7 +753,9 @@ function cmd_help() {
 			\n  - ${YELLOW}dupmn list [prof_name]                            ${NC}Shows the amount of duplicated instances of every masternode, if a profile name is provided, it lists an extended info of the profile instances.\
 			\n  - ${YELLOW}dupmn swapfile <size_in_mbytes>                   ${NC}Creates, changes or deletes (if parameter is 0) a swapfile of the given size in MB to increase the virtual memory.\
 			\n  - ${YELLOW}dupmn update                                      ${NC}Checks the last version of the script and updates it if necessary.\
-			\n**NOTE**: ${YELLOW}<parameter>${NC} means required, ${YELLOW}[parameter]${NC} means optional."
+			\n**NOTE 1**: ${YELLOW}<parameter>${NC} means required, ${YELLOW}[parameter]${NC} means optional.\
+			\n**NOTE 2**: Check ${CYAN}https://github.com/neo3587/dupmn/wiki/Commands${NC} for extended info and usage examples of each command.\
+			\n**NOTE 3**: Check ${CYAN}https://github.com/neo3587/dupmn/wiki/FAQs${NC} for technical questions and troubleshooting."
 }
 function cmd_update() {
 	echo -e "===================================================\
