@@ -1,0 +1,8 @@
+COIN_NAME="RLDCoin"
+COIN_PATH="/usr/local/bin/"
+COIN_DAEMON="rldd"
+COIN_CLI="rld-cli"
+COIN_FOLDER="/root/.rld"
+COIN_CONFIG="rld.conf"
+RPC_PORT=24400
+COIN_SERVICE="rld.service"
