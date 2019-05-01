@@ -4,8 +4,6 @@
 # Source: https://github.com/neo3587/dupmn
 
 # TODO:
-# - dupmn reinstall <number|all> [params...] ?
-# - dupmn reinstall <number|all> -updaterefs ?
 # - dupmn ipadd <ip> <netmask> <inc> # may require hard reset
 # - dupmn ipdel <ip> # not main one
 # options (all of them requires a lot of debug for ipadd and ipdel):
@@ -24,8 +22,6 @@
 # ip bind options:
 #   1. bind main & dupe
 #   2. bind dupe on unused port => need to check if actually can be activated
-#
-# list ifaces: ls folders from /sys/class/net/
 #
 # coin profile opt parameter => FORCE_IP=IPv4/IPv6
 #
@@ -290,11 +286,11 @@ function make_chmod_file() {
 	chmod +x $1
 }
 function get_ips() {
-	# <$1 = 4 or 6>
+	# <$1 = 4 or 6> | [$2 = interface]
 	if [[ "$1" = "4" ]]; then
-		echo -e $(ip addr show | grep -Eo 'inet (addr:)?([0-9]*\.){3}[0-9]*' | grep -Eo '([0-9]*\.){3}[0-9]*' | grep -v '127.0.0.1')
+		echo -e $(ip addr show $2 | grep -Eo 'inet (addr:)?([0-9]*\.){3}[0-9]*' | grep -Eo '([0-9]*\.){3}[0-9]*' | grep -v '127.0.0.1')
 	elif [[ "$1" = "6" ]]; then
-		echo -e $(ip addr show | awk '/inet6/{print $2}' | grep -v '::1/128' | cut -d / -f1)
+		echo -e $(ip addr show $2 | awk '/inet6/{print $2}' | grep -v '::1/128' | cut -d / -f1)
 	fi
 }
 function get_addr_port() {
@@ -350,7 +346,7 @@ function cmd_profadd() {
 
 	[[ ! -d ".dupmn" ]] && mkdir ".dupmn"
 	[[ ! -f ".dupmn/dupmn.conf" ]] && touch ".dupmn/dupmn.conf"
-	[[ $(conf_get_value .dupmn/dupmn.conf $prof_name) ]] || $(conf_set_value .dupmn/dupmn.conf $prof_name 0 1)
+	[[ $(conf_get_value .dupmn/dupmn.conf $prof_name) ]] || $(conf_set_value .dupmn/dupmn.conf $prof_name 0 1) # && local -A old_prof=$(get_conf $prof_name)
 
 	cp "$1" ".dupmn/$prof_name"
 
@@ -367,6 +363,9 @@ function cmd_profadd() {
 
 	echo -e "${BLUE}$prof_name${NC} profile successfully added, use ${GREEN}dupmn install $prof_name${NC} to create a new instance of the masternode"
 
+	#if [[ $old_prof ]]; then 		
+		# ask update refs
+	#fi
 	if [[ -z "${prof[COIN_SERVICE]}" ]]; then
 		echo -e "\n${YELLOW}WARNING:${NC} The provided profile doesn't have a ${CYAN}\"COIN_SERVICE\"${NC} parameter, the dupmn script won't be able to stop the main node on some commands"
 		read -r -p "Do you want to create a service for the main node? [Y/n]`echo $'\n> '`" yesno
@@ -528,13 +527,14 @@ function cmd_uninstall() {
 	fi
 }
 function cmd_iplist() {
-	echo -e "${GREEN}IPv4:${NC}"
-	for ip in $(get_ips 4); do
-		echo -e " $ip"
-	done
-	echo -e "${GREEN}IPv6:${NC}"
-	for ip in $(get_ips 6); do
-		echo -e " $ip"
+	for iface in $(ls /sys/class/net | grep -v "lo"); do
+		echo -e "Interface ${GREEN}$iface${NC}:"
+		for ip in $(get_ips 4 $iface); do
+			echo -e "  ${YELLOW}$ip${NC}"
+		done
+		for ip in $(get_ips 6 $iface); do
+			echo -e "  ${CYAN}$ip${NC}"
+		done
 	done
 }
 function cmd_bootstrap() {
