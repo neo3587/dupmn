@@ -4,6 +4,7 @@
 # Source: https://github.com/neo3587/dupmn
 
 # TODO:
+# - dupmn list -checkstatus => check all listed MNs status
 # - dupmn ipadd <ip> <netmask> <inc> # may require hard reset
 # - dupmn ipdel <ip> # not main one
 # options (all of them requires a lot of debug for ipadd and ipdel):
@@ -200,6 +201,12 @@ function wallet_loaded() {
 	fi
 	exec 2> /dev/tty
 }
+function exec_coin() {
+	# <$1 = daemon|cli> | [$2 = dupe]
+	local use_cmd=$([[ $1 == "daemon" ]] && echo $([[ $2 -gt 0 ]] && echo $coin_daemon-$2 || echo $exec_coin_daemon) \
+		  || echo $([[ $1 == "cli"    ]] && echo $([[ $2 -gt 0 ]] && echo $coin_cli-$2    || echo $exec_coin_cli)))
+	[[ ! $use_cmd ]] && echo "DEBUG ERROR exec_coin passed parameter: $1" && exit || echo $use_cmd
+}
 function try_cmd() {
 	# <$1 = exec> | <$2 = try> | <$3 = catch>
 	exec 2> /dev/null
@@ -218,16 +225,12 @@ function install_proc() {
 	new_folder="$coin_folder$2"
 
 	if [[ ! $new_key ]]; then
-		if [[ ! $(wallet_loaded) ]]; then
-			for (( i=1; i<=$dup_count; i++ )); do
-				if [[ $(wallet_loaded $i) ]]; then
-					new_key=$(try_cmd $coin_cli-$i "createmasternodekey" "masternode genkey")
-					break
-				fi
-			done
-		else
-			new_key=$(try_cmd $exec_coin_cli "createmasternodekey" "masternode genkey")
-		fi
+		for (( i=0; i<=$dup_count; i++ )); do
+			if [[ $(wallet_loaded $i) ]]; then
+				new_key=$(try_cmd $(exec_coin cli $i) "createmasternodekey" "masternode genkey")
+				break
+			fi
+		done
 	fi
 
 	if [[ ! $new_rpc ]]; then
@@ -261,7 +264,7 @@ function install_proc() {
 
 	if [[ ! $new_key ]]; then
 		# main and dupes were stopped on createmasternodekey
-		echo "Couldn't find a opened $coin_name wallet opened to generate a private key, temporary opening the new wallet to generate a key"
+		echo -e "Couldn't find a opened ${BLUE}$coin_name${NC} wallet opened to generate a private key, temporary opening the new wallet to generate a key"
 		$(conf_set_value $new_folder/$coin_config "masternode"        "0"      1)
 		$coin_daemon-$2 -daemon
 		wallet_loaded $2 30 > /dev/null
@@ -346,7 +349,7 @@ function cmd_profadd() {
 
 	[[ ! -d ".dupmn" ]] && mkdir ".dupmn"
 	[[ ! -f ".dupmn/dupmn.conf" ]] && touch ".dupmn/dupmn.conf"
-	[[ $(conf_get_value .dupmn/dupmn.conf $prof_name) ]] || $(conf_set_value .dupmn/dupmn.conf $prof_name 0 1) # && local -A old_prof=$(get_conf $prof_name)
+	[[ $(conf_get_value .dupmn/dupmn.conf $prof_name) ]] || $(conf_set_value .dupmn/dupmn.conf $prof_name 0 1)
 
 	cp "$1" ".dupmn/$prof_name"
 
@@ -363,9 +366,6 @@ function cmd_profadd() {
 
 	echo -e "${BLUE}$prof_name${NC} profile successfully added, use ${GREEN}dupmn install $prof_name${NC} to create a new instance of the masternode"
 
-	#if [[ $old_prof ]]; then 		
-		# ask update refs
-	#fi
 	if [[ -z "${prof[COIN_SERVICE]}" ]]; then
 		echo -e "\n${YELLOW}WARNING:${NC} The provided profile doesn't have a ${CYAN}\"COIN_SERVICE\"${NC} parameter, the dupmn script won't be able to stop the main node on some commands"
 		read -r -p "Do you want to create a service for the main node? [Y/n]`echo $'\n> '`" yesno
@@ -469,11 +469,12 @@ function cmd_reinstall() {
 	# <$1 = profile_name> | <$2 = instance_number>
 
 	systemctl stop $coin_name-$2.service
-	[[ $($exec_coin_cli-$2 stop 2> /dev/null) ]] && sleep 3
+	[[ $(exec_coin cli $2 stop 2> /dev/null) ]] && sleep 3
 	[[ ! $new_key ]] && new_key=$(conf_get_value $coin_folder$2/$coin_config "masternodeprivkey")
 	rm -rf $coin_folder$2
 
 	cmd_install $1 $2
+	dup_count=$(($dup_count-1))
 
 	$(make_chmod_file /usr/bin/$coin_cli-all    "#!/bin/bash\nfor (( i=0; i<=$dup_count; i++ )) do\n echo -e MN\$i:\n $coin_cli-\$i \$@\ndone")
 	$(make_chmod_file /usr/bin/$coin_daemon-all "#!/bin/bash\nfor (( i=0; i<=$dup_count; i++ )) do\n echo -e MN\$i:\n $coin_daemon-\$i \$@\ndone")
