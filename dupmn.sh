@@ -4,7 +4,6 @@
 # Source: https://github.com/neo3587/dupmn
 
 # TODO:
-# - dupmn list -checkstatus => check all listed MNs status
 # - dupmn ipadd <ip> <netmask> <inc> # may require hard reset
 # - dupmn ipdel <ip> # not main one
 # options (all of them requires a lot of debug for ipadd and ipdel):
@@ -207,6 +206,9 @@ function exec_coin() {
 		  || echo $([[ $1 == "cli"    ]] && echo $([[ $2 -gt 0 ]] && echo $coin_cli-$2    || echo $exec_coin_cli)))
 	[[ ! $use_cmd ]] && echo "DEBUG ERROR exec_coin passed parameter: $1" && exit || echo $use_cmd
 }
+function get_folder() {
+	echo $coin_folder$([[ $1 -gt 0 ]] && echo $1 || echo "")/
+}
 function try_cmd() {
 	# <$1 = exec> | <$2 = try> | <$3 = catch>
 	exec 2> /dev/null
@@ -408,8 +410,9 @@ function cmd_install() {
 	if [[ -n $ip ]]; then 
 
 		# IP repeated check:
-		# local netstat_list=$(netstat -Wlantp | grep LISTEN | grep $coin_daemon)
-		# for each IP => echo netstat_list | grep $ip_from_list
+		# local netstat_list=$(netstat -tulpn) 
+		# ipv4 => grep tcp + list ip 0.0.0.0 || grep ipv6 => tcp6 + list ip ::
+		# foreach ipv4 or ipv6 => warn if ip:port exists
 
 		#local -a mn_port=$(get_addr_port)
 		local mn_port=$(conf_get_value $new_folder/$coin_config "port")
@@ -454,9 +457,9 @@ function cmd_install() {
 			\n==================================================================================================="
 
 	if [[ -n $ip ]]; then
-		for (( i=0; i<$dup_count; i++ )); do
-			if [[ $i != $2 && $(conf_get_value $coin_folder$([[ $i -eq 0 ]] && echo "" || echo $i)/$coin_config "bind") = $ip ]]; then
-				echo -e "${RED}WARNING:${NC} looks like that the ${BLUE}$([[ $i -eq 0 ]] && echo "main node" || echo "dupe $i")${NC} already uses the same IP, it may cause that this dupe doesn't work"
+		for (( i=0; i<$dup_count; i++ )); do 
+			if [[ $i != $2 && $(conf_get_value $(get_folder $i)$coin_config "bind") == "$ip" ]]; then
+				echo -e "${RED}WARNING:${NC} looks like that the ${BLUE}node $i${NC} already uses the same IP, it may cause that this dupe doesn't work"
 				break;
 			fi
 		done
@@ -557,9 +560,6 @@ function cmd_bootstrap() {
 	function bootstrap_proc() {
 		# <$1 = destiny> | <$2 = origin> | [$3 = try_dupes]
 
-		function get_folder() {
-			echo $coin_folder$([[ $1 -gt 0 ]] && echo $1 || echo "")/
-		}
 		function copy_chain() {
 			# <$1 = origin> | <$2 = destiny>
 			local dest_loaded=$(wallet_loaded $2)
@@ -730,6 +730,15 @@ function cmd_swapfile() {
 
 	echo -e "Use ${YELLOW}swapon -s${NC} to see the changes of your swapfile and ${YELLOW}free -m${NC} to see the total available memory"
 }
+function cmd_checkmem() {
+	local checks=$(ps -o pid,user,%mem,command ax | sort -b -k3 -r | grep -v 0.0)
+
+	for x in $(echo "$checks" | awk '{ print $4 }' | tail -n +2 | grep -v python3 | uniq | awk -F"/" '{ print $NF }'); do
+		echo -e "$x : "$(echo "$checks" | grep "$x" | awk '{ SUM += $3 } END { print SUM"%"}')
+	done
+
+	echo "$checks" | awk '{ SUM += $3 } END { print "Total mem. usage: "SUM"%" }'
+}
 function cmd_help() {
 	echo -e "Options:\
 			\n  - ${YELLOW}dupmn profadd <prof_file> [prof_name]             ${NC}Adds a profile that will be used to create duplicates of the masternode, it will use the COIN_NAME parameter as name if a prof_name is not provided.\
@@ -752,6 +761,7 @@ function cmd_help() {
 			\n  - ${YELLOW}dupmn rpcchange <prof_name> <number> [port]       ${NC}Changes the RPC port used from the given number instance with the new one (or finds a new one by itself if no port is given).\
 			\n  - ${YELLOW}dupmn systemctlall <prof_name> <command>          ${NC}Applies the systemctl command to all the duplicated instances of the given profile name (but not the main instance).\
 			\n  - ${YELLOW}dupmn list [prof_name]                            ${NC}Shows the amount of duplicated instances of every masternode, if a profile name is provided, it lists an extended info of the profile instances.\
+			\n  - ${YELLOW}dupmn checkmem                                    ${NC}Shows the memory usage (%) of every group of nodes.
 			\n  - ${YELLOW}dupmn swapfile <size_in_mbytes>                   ${NC}Creates, changes or deletes (if parameter is 0) a swapfile of the given size in MB to increase the virtual memory.\
 			\n  - ${YELLOW}dupmn update                                      ${NC}Checks the last version of the script and updates it if necessary.\
 			\n**NOTE 1**: ${YELLOW}<parameter>${NC} means required, ${YELLOW}[parameter]${NC} means optional.\
@@ -789,7 +799,7 @@ function main() {
 		# <$1 = instance_number> | [$2 = allow number 0]
 
 		if [[ ! $(is_number $1) ]]; then
-			echo -e "${RED}$2${NC} is not a number"
+			echo -e "${RED}$1${NC} is not a number"
 			exit
 		elif [[ $(($1)) = 0 && "$2" != "1" ]]; then
 			echo -e "Instance ${CYAN}0${NC} is a reference to the main masternode, not a duplicated one, can't use this one"
@@ -963,6 +973,9 @@ function main() {
 				exit
 			fi
 			cmd_swapfile "$2"
+			;;
+		"checkmem")
+			cmd_checkmem
 			;;
 		"help")
 			cmd_help
