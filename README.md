@@ -45,6 +45,7 @@ Check the [Usage example](#usage-example) to see the guide of the steps to follo
 - [`dupmn systemctlall <profile_name> <command>`](https://github.com/neo3587/dupmn/wiki/Commands#systemctlall) : Applies the systemctl command to all services created with the given profile (will only affect the main node too if the profile haves the COIN_SERVICE parameter).
 - [`dupmn list [profile_name]`](https://github.com/neo3587/dupmn/wiki/Commands#list) : Shows the amount of duplicated instances of every masternode, if a profile name is provided, it lists an extended info of the profile instances.
 - [`dupmn swapfile <size_in_mbytes>`](https://github.com/neo3587/dupmn/wiki/Commands#swapfile) : Creates/changes or deletes (if value is 0) a swapfile to increase the virtual memory, allowing to fit more masternodes in the same VPS, recommended size is 150 MB for each masternode (example: 3 masternodes => `dupmn swapfile 450`), note that some masternodes might be more 'RAM hungry'.
+- [`dupmn checkmem`](https://github.com/neo3587/dupmn/wiki/Commands#checkmem) : Shows the RAM usage (in %) of each node group.
 - [`dupmn help`](https://github.com/neo3587/dupmn/wiki/Commands#help) : Just shows the available commands in the console.
 - [`dupmn update`](https://github.com/neo3587/dupmn/wiki/Commands#update) : Checks the last version of the script and updates it if necessary.
 
