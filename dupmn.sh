@@ -4,6 +4,7 @@
 # Source: https://github.com/neo3587/dupmn
 
 # TODO:
+# - dupmn any_command 3>&1 &>/dev/null => get a json instead
 # - dupmn ipadd <ip> <netmask> <inc> # may require hard reset
 # - dupmn ipdel <ip> # not main one
 # options (all of them requires a lot of debug for ipadd and ipdel):
@@ -17,7 +18,6 @@
 #		#Changed/added values in /etc/sysctl.conf can be activated during runtime, but at least an interface down/up or a reboot is recommended.
 #		sysctl -p
 #
-#  note => seems like adding a ipv6 with ip cmd doesn't gets deleted after restart, need more testing
 #
 # ip bind options:
 #   1. bind main & dupe
@@ -54,11 +54,15 @@ new_key=""
 install_bootstrap=""
 
 
+function echo_json() {
+	[[ -t 3 ]] && echo -e "$1" >&3
+}
 function load_profile() {
 	# <$1 = profile_name> | [$2 = check_exec]
 
 	if [[ ! -f ".dupmn/$1" ]]; then
 		echo -e "${BLUE}$1${NC} profile hasn't been added"
+		echo_json `{"error":"profile hasn't been added","errcode":1}`
 		exit
 	fi
 
@@ -70,12 +74,14 @@ function load_profile() {
 		if [[ ! "${!prof[@]}" =~ "$var" || -z "${prof[$var]}" ]]; then
 			echo -e "Seems like you modified something that was supposed to remain unmodified: ${MAGENTA}$var${NC} parameter should exists and have a assigned value in ${GREEN}.dupmn/$1${NC} file"
 			echo -e "You can fix it by adding the ${BLUE}$1${NC} profile again"
+			echo_json `{"error":"profile modified","errcode":2}`
 			exit
 		fi
 	done
 	if [[ ! "${!conf[@]}" =~ "$1" || -z "${conf[$1]}" || ! $(is_number "${conf[$1]}") ]]; then
 		echo -e "Seems like you modified something that was supposed to remain unmodified: ${MAGENTA}$1${NC} parameter should exists and have a assigned number in ${GREEN}.dupmn/dupmn.conf${NC} file"
 		echo -e "You can fix it by adding ${MAGENTA}$1=0${NC} to the .dupmn/dupmn.conf file (replace the number 0 for the number of nodes installed with dupmn using the ${BLUE}$1${NC} profile)"
+		echo_json `{"error":"dupmn.conf modified","errcode":3}`
 		exit
 	fi
 
@@ -96,6 +102,7 @@ function load_profile() {
 			exec_coin_daemon=$(which $coin_daemon)
 			if [[ ! -f "$exec_coin_daemon" ]]; then
 				echo -e "Can't locate ${GREEN}$coin_daemon${NC}, it must be at the defined path from ${CYAN}\"COIN_PATH\"${NC} or in ${CYAN}/usr/bin/${NC} or ${CYAN}/usr/local/bin/${NC}"
+				echo_json `{"error":"coin daemon can't be found","errcode":4}`
 				exit
 			fi
 		fi
@@ -103,6 +110,7 @@ function load_profile() {
 			exec_coin_cli=$(which $coin_cli)
 			if [[ ! -f "$exec_coin_cli" ]]; then
 				echo -e "Can't locate ${GREEN}$coin_cli${NC}, it must be at the defined path from ${CYAN}\"COIN_PATH\"${NC} or in ${CYAN}/usr/bin/${NC} or ${CYAN}/usr/local/bin/${NC}"
+				echo_json `{"error":"coin cli can't be found","errcode":5}`
 				exit
 			fi
 		fi
@@ -291,11 +299,13 @@ function make_chmod_file() {
 	chmod +x $1
 }
 function get_ips() {
-	# <$1 = 4 or 6> | [$2 = interface]
+	# <$1 = 4 or 6> | [$2 = netmask] | [$3 = interface]
 	if [[ "$1" = "4" ]]; then
-		echo -e $(ip addr show $2 | grep -Eo 'inet (addr:)?([0-9]*\.){3}[0-9]*' | grep -Eo '([0-9]*\.){3}[0-9]*' | grep -v '127.0.0.1')
+		local get_ip4=$(ip addr show | grep -Eo 'inet (addr:)?([0-9]*\.){3}[0-9]*/[0-9]*' | grep -Eo '([0-9]*\.){3}[0-9]*/*[0-9]*' | grep -v '127.0.0.1')
+		[[ "$2" != "1" ]] && echo -e $get_ip4 | cut -d / -f1 || echo -e $get_ip4
 	elif [[ "$1" = "6" ]]; then
-		echo -e $(ip addr show $2 | awk '/inet6/{print $2}' | grep -v '::1/128' | cut -d / -f1)
+		local get_ip6=$(ip addr show $3 | awk '/inet6/{print $2}' | grep -v '::1/128')
+		[[ "$2" != "1" ]] && echo -e $get_ip6 | cut -d / -f1 || echo -e $get_ip6
 	fi
 }
 function get_addr_port() {
@@ -327,7 +337,11 @@ function netmask_cidr() {
 function cmd_profadd() {
 	# <$1 = profile_file> | [$2 = profile_name]
 
-	[[ ! -f $1 ]] && echo -e "${BLUE}$1${NC} file doesn't exists" && return
+	if [[ ! -f $1 ]]; then
+		echo -e "${BLUE}$1${NC} file doesn't exists"
+		echo_json `{"error":"provided file doesn't exists","errcode":5}`
+		return
+	fi
 
 	local -A prof=$(get_conf $1)
 	local CMD_ARRAY=(COIN_NAME COIN_DAEMON COIN_CLI COIN_FOLDER COIN_CONFIG)
@@ -335,9 +349,11 @@ function cmd_profadd() {
 	for var in "${CMD_ARRAY[@]}"; do
 		if [[ ! "${!prof[@]}" =~ "$var" ]]; then
 			echo -e "${MAGENTA}$var${NC} doesn't exists in the supplied profile file"
+			echo_json `{"error":"missing variable: $var","errcode":6}`
 			return
 		elif [[ -z "${prof[$var]}" ]]; then
 			echo -e "${MAGENTA}$var${NC} doesn't contain a value in the supplied profile file"
+			echo_json `{"error":"missing value: $var","errcode":7}`
 			return
 		fi
 	done
@@ -346,6 +362,7 @@ function cmd_profadd() {
 
 	if [[ "$prof_name" = "dupmn.conf" ]]; then
 		echo -e "From the infinite amount of possible names for the profile and you had to choose the only one that you can't use... for god sake..."
+		echo_json `{"error":"reserved profile name","errcode":8}`
 		return
 	fi
 
@@ -367,6 +384,7 @@ function cmd_profadd() {
 	fi
 
 	echo -e "${BLUE}$prof_name${NC} profile successfully added, use ${GREEN}dupmn install $prof_name${NC} to create a new instance of the masternode"
+	echo_json `{"message":"profile successfully added","errcode":0}`
 
 	if [[ -z "${prof[COIN_SERVICE]}" ]]; then
 		echo -e "\n${YELLOW}WARNING:${NC} The provided profile doesn't have a ${CYAN}\"COIN_SERVICE\"${NC} parameter, the dupmn script won't be able to stop the main node on some commands"
@@ -533,13 +551,30 @@ function cmd_uninstall() {
 function cmd_iplist() {
 	for iface in $(ls /sys/class/net | grep -v "lo"); do
 		echo -e "Interface ${GREEN}$iface${NC}:"
-		for ip in $(get_ips 4 $iface); do
+		for ip in $(get_ips 4 1 $iface); do
 			echo -e "  ${YELLOW}$ip${NC}"
 		done
-		for ip in $(get_ips 6 $iface); do
+		for ip in $(get_ips 6 1 $iface); do
 			echo -e "  ${CYAN}$ip${NC}"
 		done
 	done
+}
+function cmd_ipadd() {
+	# if IPv4
+		echo "TODO"
+		exit
+	# if IPv6
+		conf_set_value /etc/sysctl.conf net.ipv6.conf.all.disable_ipv6 0
+		sysctl -p
+		ip -6 addr add $1/$2 dev $3
+}
+function cmd_ipdel() {
+	# if IPv4
+		echo "TODO"
+		exit
+	# if IPv6
+		# $1/$2 in $(get_ips 6 1 $3)
+		ip -6 addr del $1/$2 dev $3
 }
 function cmd_bootstrap() {
 	# <$1 = destiny> | <$2 = origin> | [$3 = try_dupes]
@@ -681,10 +716,9 @@ function cmd_list() {
 	else
 		function print_dup_info() {
 			local dup_ip=$(conf_get_value $coin_folder$1/$coin_config "masternodeaddr")
-			local online=$([[ $(wallet_loaded $1) ]] && echo 1 || echo 0)
-			local mnstatus=$([[ $online == 1 ]] && try_cmd $([[ -z "$1" ]] && echo $exec_coin_cli || echo $coin_cli-$1) "masternodedebug" "masternode debug")
-			echo -e  "  online  : $([[ $online = 1 ]] && echo ${BLUE}true${NC} || echo ${RED}false${NC})\
-					$([[ -n $mnstatus ]] && echo "\n  status  : "${mnstatus//[$'\r\n']})\
+			local mnstatus=$(try_cmd $(exec_coin cli $1) "masternodedebug" "masternode debug")
+			echo -e  "  online  : $([[ $mnstatus ]] && echo ${BLUE}true${NC} || echo ${RED}false${NC})\
+					$([[ $mnstatus ]] && echo "\n  status  : "${mnstatus//[$'\r\n']})\
 					\n  ip      : ${YELLOW}$([[ -z "$dup_ip" ]] && echo $(conf_get_value $coin_folder$1/$coin_config "externalip") || echo "$dup_ip")${NC}\
 					\n  rpcport : ${MAGENTA}$(conf_get_value $coin_folder$1/$coin_config rpcport)${NC}\
 					\n  privkey : ${GREEN}$(conf_get_value $coin_folder$1/$coin_config masternodeprivkey)${NC}"
@@ -732,9 +766,10 @@ function cmd_swapfile() {
 }
 function cmd_checkmem() {
 	local checks=$(ps -o pid,user,%mem,command ax | sort -b -k3 -r | grep -v 0.0)
+	local daemons=$(echo "$checks" | awk '{ print $4 }' | tail -n +2 | grep -v python3 | awk -F"/" '{ print $NF }')
 
-	for x in $(echo "$checks" | awk '{ print $4 }' | tail -n +2 | grep -v python3 | uniq | awk -F"/" '{ print $NF }'); do
-		echo -e "$x : "$(echo "$checks" | grep "$x" | awk '{ SUM += $3 } END { print SUM"%"}')
+	for x in $(echo "$daemons" | sort | uniq); do
+		echo -e "$x ("$(echo "$daemons" | grep "$x" | wc -l)") : "$(echo "$checks" | grep "$x" | awk '{ SUM += $3 } END { print SUM" %"}')
 	done
 
 	echo "$checks" | awk '{ SUM += $3 } END { print "Total mem. usage: "SUM"%" }'
