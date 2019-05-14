@@ -127,7 +127,7 @@ dupmn install othercoin
 
 # <a name ="considerations"></a> Considerations
 
-A VPS doesn't have unlimited resources, creating too many instances may cause Out-Of-Memory error since MNs are a bit "RAM hungry" (can be partially fixed with [`dupmn swapfile`](https://github.com/neo3587/dupmn/wiki/Commands#dupmn-swapfile-size_in_mbytes) command), there's also a limited hard-disk space and the blockchain increases in size everyday (so be sure to have a lot of free hard disk space, can be checked with `df -h`), and VPS providers usually puts a limit on monthly network bandwith (so running too many instances may get you to that limit).
+A VPS doesn't have unlimited resources, creating too many instances may cause Out-Of-Memory error since MNs are a bit "RAM hungry" (can be partially fixed with [`dupmn swapfile`](https://github.com/neo3587/dupmn/wiki/Commands#swapfile) command), there's also a limited hard-disk space and the blockchain increases in size everyday (so be sure to have a lot of free hard disk space, can be checked with `df -h`), and VPS providers usually puts a limit on monthly network bandwith (so running too many instances may get you to that limit).
 
 # <a name ="additional"></a> Additional
 
