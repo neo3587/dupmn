@@ -147,7 +147,7 @@ function find_port() {
 		dup_ports="$dup_ports $(conf_get_value $coin_folder$i/$coin_config rpcport) "
 	done
 	local port=$(port_check_loop $1 49151 "( $dup_ports )")
-	[[ -n "$port" ]] && echo $port || echo $(port_check_loop 1024 $1 "( $dup_ports )")
+	[[ "$port" ]] && echo $port || echo $(port_check_loop 1024 $1 "( $dup_ports )")
 }
 function is_number() {
 	# <$1 = number>
@@ -156,7 +156,7 @@ function is_number() {
 function configure_systemd() {
 	# [$1 = instance_number]
 
-	local service_name=$([[ -n $1 ]] && echo $coin_name-$1 || echo $coin_name)
+	local service_name=$([[ $1 ]] && echo $coin_name-$1 || echo $coin_name)
 
 	echo -e "[Unit]\
 	\nDescription=$service_name service\
@@ -180,8 +180,8 @@ function configure_systemd() {
 	chmod +x /etc/systemd/system/$service_name.service
 
 	systemctl daemon-reload
-	[[ -n $install_bootstrap ]] && cmd_bootstrap $1 0 1
-	[[ -n $1 ]] && systemctl start $service_name.service
+	[[ $install_bootstrap ]] && cmd_bootstrap $1 0 1
+	[[ $1 ]] && systemctl start $service_name.service
 	systemctl enable $service_name.service > /dev/null 2>&1
 
 	if [[ $1 && -z "$(ps axo cmd:100 | egrep $service_name)" ]]; then
@@ -201,7 +201,7 @@ function wallet_loaded() {
 	function check_wallet_response() {
 		[[ $(is_number $([[ $1 -gt 0 ]] && echo $($coin_cli-$(($1)) getblockcount) || echo $($exec_coin_cli getblockcount))) ]] && echo "1"
 	}
-	if [[ -z "$2" ]]; then
+	if [[ ! $2 ]]; then
 		check_wallet_response $1
 	else
 		for (( i=0; i<=$2; i++)); do
@@ -223,7 +223,7 @@ function try_cmd() {
 	# <$1 = exec> | <$2 = try> | <$3 = catch>
 	exec 2> /dev/null
 	local check=$($1 $2)
-	[[ -n "$check" ]] && echo $check || echo $($1 $3)
+	[[ "$check" ]] && echo $check || echo $($1 $3)
 	exec 2> /dev/tty
 }
 function install_proc() {
@@ -246,8 +246,8 @@ function install_proc() {
 	fi
 
 	if [[ ! $new_rpc ]]; then
-		new_rpc=$([[ -n $rpc_port ]] && echo $rpc_port || conf_get_value $coin_folder/$coin_config "rpcport")
-		new_rpc=$(find_port $(($([[ -n $new_rpc ]] && echo $new_rpc || echo "1023")+1)))
+		new_rpc=$([[ $rpc_port ]] && echo $rpc_port || conf_get_value $coin_folder/$coin_config "rpcport")
+		new_rpc=$(find_port $(($([[ $new_rpc ]] && echo $new_rpc || echo "1023")+1)))
 	fi
 
 	mkdir $new_folder > /dev/null 2>&1
@@ -293,7 +293,7 @@ function conf_set_value() {
 }
 function conf_get_value() {
 	# <$1 = conf_file> | <$2 = key> | [$3 = limit]
-	[[ "$3" == "0" ]] && grep -ws "^$2" "$1" | cut -d "=" -f2 || grep -ws "^$2" "$1" | cut -d "=" -f2 | head $([[ -z "$3" ]] && echo "-1" || echo "-$3")
+	[[ "$3" == "0" ]] && grep -ws "^$2" "$1" | cut -d "=" -f2 || grep -ws "^$2" "$1" | cut -d "=" -f2 | head $([[ ! $3 ]] && echo "-1" || echo "-$3")
 }
 function make_chmod_file() {
 	# <$1 = file> | <$2 = content>
@@ -349,7 +349,7 @@ function cmd_profadd() {
 		fi
 	done
 
-	local prof_name=$([[ -z "$2" ]] && echo ${prof[COIN_NAME]} || echo "$2")
+	local prof_name=$([[ ! $2 ]] && echo ${prof[COIN_NAME]} || echo "$2")
 
 	if [[ "$prof_name" = "dupmn.conf" ]]; then
 		echo -e "From the infinite amount of possible names for the profile and you had to choose the only one that you can't use... for god sake..."
@@ -448,10 +448,10 @@ function cmd_install() {
 		$(conf_set_value $new_folder/$coin_config "masternodeaddr" $ip:$mn_port 0)
 		$(conf_set_value $new_folder/$coin_config "bind"           $ip         1)
 
-		if [[ -z $(conf_get_value $coin_folder/$coin_config "bind") ]]; then
+		if [[ ! $(conf_get_value $coin_folder/$coin_config "bind") ]]; then
 			echo -e "Adding the ${CYAN}bind${NC} parameter to the main node conf file, this only will be applied this time..."
 			local main_ip=$(conf_get_value $new_folder/$coin_config "masternodeaddr")
-			$(conf_set_value $coin_folder/$coin_config "bind" $([[ -z "$main_ip" ]] && echo $(conf_get_value $coin_folder/$coin_config "externalip") || echo "$main_ip") 1)
+			$(conf_set_value $coin_folder/$coin_config "bind" $([[ ! $main_ip ]] && echo $(conf_get_value $coin_folder/$coin_config "externalip") || echo "$main_ip") 1)
 			if [[ $($exec_coin_cli stop 2> /dev/null) ]]; then
 				sleep 5
 				$exec_coin_daemon -daemon > /dev/null 2>&1
@@ -596,7 +596,7 @@ function cmd_bootstrap() {
 
 	function main_mn_try_bootstrap() {
 		# <$1 = destiny> | <$2 = origin> | [$3 = try_dupes]
-		[[ -z "$coin_service" ]] && echo -e "${MAGENTA}Main MN service not detected in the profile, can't temporary stop the main node to copy the chain.${NC}" || echo -e "${MAGENTA}Main MN service ($coin_service) not found in /etc/systemd/system${NC}"
+		[[ ! $coin_service ]] && echo -e "${MAGENTA}Main MN service not detected in the profile, can't temporary stop the main node to copy the chain.${NC}" || echo -e "${MAGENTA}Main MN service ($coin_service) not found in /etc/systemd/system${NC}"
 		if [[ "$2" == "0" && "$3" == "1" && $dup_count -ge 2 ]]; then
 			echo -e "Trying to use the first dupe available for the bootstrap..."
 			bootstrap_proc $1 $([[ "$1" == "1" ]] && echo 2 || echo 1)
@@ -634,7 +634,7 @@ function cmd_bootstrap() {
 
 		if [[ $1 == $2 ]]; then
 			echo "You cannot use the same node for the chain copy... that doesn't makes sense"
-		elif [[ ("$1" == "0" || "$2" == "0") && $(wallet_loaded) && (-z "$coin_service" || ! -f /etc/systemd/system/$coin_service) ]]; then 
+		elif [[ ("$1" == "0" || "$2" == "0") && $(wallet_loaded) && (! $coin_service || ! -f /etc/systemd/system/$coin_service) ]]; then 
 			main_mn_try_bootstrap $1 $2 $3
 		elif [[ ! $(wallet_loaded $2) ]]; then 
 			copy_chain $2 $1
@@ -652,7 +652,7 @@ function cmd_bootstrap() {
 		local origin_service=$([[ $2 -gt 0 ]] && echo "$coin_name-$2.service" || echo "$coin_service")
 		local origin_loaded=$(wallet_loaded $2)
 		if [[ $origin_loaded ]]; then
-			[[ "$2" == "0" && (-z "$coin_service" || ! -f /etc/systemd/system/$coin_service) ]] && main_mn_try_bootstrap $1 $2 && return
+			[[ "$2" == "0" && (! $coin_service || ! -f /etc/systemd/system/$coin_service) ]] && main_mn_try_bootstrap $1 $2 && return
 			systemctl stop $origin_service 
 			[[ $($coin_cli-$2 stop 2> /dev/null) ]] && sleep 3
 		fi
@@ -673,7 +673,7 @@ function cmd_rpcchange() {
 
 	local new_port=$(($(conf_get_value $coin_folder$2/$coin_config "rpcport")))
 
-	if [[ -z "$3" ]]; then
+	if [[ ! $3 ]]; then
 		echo -e "No port provided, the port will be changed for any other free port..."
 		new_port=$(find_port $new_port)
 	elif [[ ! $(is_number $3) ]]; then
@@ -700,7 +700,7 @@ function cmd_systemctlall() {
 	# <$1 = profile_name> | <$2 = command>
 
 	trap '' 2
-	if [[ -n "$coin_service" ]]; then
+	if [[ "$coin_service" ]]; then
 		if [[ -f /etc/systemd/system/$coin_service ]]; then
 			echo -e "${CYAN}systemctl $2 $coin_service${NC}"
 			systemctl $2 $coin_service
@@ -719,7 +719,7 @@ function cmd_systemctlall() {
 function cmd_list() {
 	# [$1 = profile_name]
 
-	if [[ -z "$1" ]]; then
+	if [[ ! $1 ]]; then
 		local -A conf=$(get_conf .dupmn/dupmn.conf)
 		if [ ${#conf[@]} -eq 0 ]; then
 			echo -e "(no profiles added)"
@@ -734,7 +734,7 @@ function cmd_list() {
 			local mnstatus=$(try_cmd $(exec_coin cli $1) "masternodedebug" "masternode debug")
 			echo -e  "  online  : $([[ $mnstatus ]] && echo ${BLUE}true${NC} || echo ${RED}false${NC})\
 					$([[ $mnstatus ]] && echo "\n  status  : "${mnstatus//[$'\r\n']})\
-					\n  ip      : ${YELLOW}$([[ -z "$dup_ip" ]] && echo $(conf_get_value $coin_folder$1/$coin_config "externalip") || echo "$dup_ip")${NC}\
+					\n  ip      : ${YELLOW}$([[ ! $dup_ip ]] && echo $(conf_get_value $coin_folder$1/$coin_config "externalip") || echo "$dup_ip")${NC}\
 					\n  rpcport : ${MAGENTA}$(conf_get_value $coin_folder$1/$coin_config rpcport)${NC}\
 					\n  privkey : ${GREEN}$(conf_get_value $coin_folder$1/$coin_config masternodeprivkey)${NC}"
 		}
@@ -870,40 +870,34 @@ function main() {
 	function ip_parse() {
 		# <$1 = IPv4 or IPv6> | [$2 = IPv6 brackets]
 
-		function hexc() {
-			[[ "$1" != "" ]] && printf "%x" $(printf "%d" "$(( 0x$1 ))")
-		}
-
 		ip=$1
 
 		local ipv4_regex="^(([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])\.){3}([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])$"
-		local ipv6_regex=("("
-			"([0-9a-fA-F]{1,4}:){7,7}[0-9a-fA-F]{1,4}|"
-			"([0-9a-fA-F]{1,4}:){1,7}:|"
-			"([0-9a-fA-F]{1,4}:){1,6}:[0-9a-fA-F]{1,4}|"
-			"([0-9a-fA-F]{1,4}:){1,5}(:[0-9a-fA-F]{1,4}){1,2}|"
-			"([0-9a-fA-F]{1,4}:){1,4}(:[0-9a-fA-F]{1,4}){1,3}|"
-			"([0-9a-fA-F]{1,4}:){1,3}(:[0-9a-fA-F]{1,4}){1,4}|"
-			"([0-9a-fA-F]{1,4}:){1,2}(:[0-9a-fA-F]{1,4}){1,5}|"
-			"[0-9a-fA-F]{1,4}:((:[0-9a-fA-F]{1,4}){1,6})|"
-			":((:[0-9a-fA-F]{1,4}){1,7}|"
-			":)"
-		")")
+		local ipv6_regex=(
+				"^([0-9a-fA-F]{1,4}:){7,7}[0-9a-fA-F]{1,4}$|"
+				"^([0-9a-fA-F]{1,4}:){1,7}:$|"
+				"^([0-9a-fA-F]{1,4}:){1,6}:[0-9a-fA-F]{1,4}$|"
+				"^([0-9a-fA-F]{1,4}:){1,5}(:[0-9a-fA-F]{1,4}){1,2}$|"
+				"^([0-9a-fA-F]{1,4}:){1,4}(:[0-9a-fA-F]{1,4}){1,3}$|"
+				"^([0-9a-fA-F]{1,4}:){1,3}(:[0-9a-fA-F]{1,4}){1,4}$|"
+				"^([0-9a-fA-F]{1,4}:){1,2}(:[0-9a-fA-F]{1,4}){1,5}$|"
+				"^[0-9a-fA-F]{1,4}:((:[0-9a-fA-F]{1,4}){1,6})$|"
+				"^:((:[0-9a-fA-F]{1,4}){1,7}|:)$"
+		)
 
 		if [[ "$1" =~ $ipv4_regex ]]; then
 			ip_type=4
 			return
 		elif [[ "$1" =~ $(printf "%s" "${ipv6_regex[@]}") ]]; then
 
-			echo $ip | grep -qs "^:" && ip="0${ip}"
+			[[ $(echo $ip | grep "^:") ]] && ip="0${ip}"
 
-			if [[ $(echo $ip | grep -qs "::") ]]; then
+			if [[ $(echo $ip | grep "::") ]]; then
 				ip=$(echo $ip | sed "s/::/$(echo ":::::::::" | sed "s/$(echo $ip | sed 's/[^:]//g')//" | sed 's/:/:0/g')/")
 			fi
 
-			set $(echo $ip | grep -o "[0-9a-f]\+")
+			ip=$(echo $ip | grep -o "[0-9a-f]\+" | sed "s/^/0x/" | xargs printf "%x\n" | paste -sd ":" | sed "s/:0:/::/")
 
-			ip=$(echo "$(hexc $1):$(hexc $2):$(hexc $3):$(hexc $4):$(hexc $5):$(hexc $6):$(hexc $7):$(hexc $8)" | sed "s/:0:/::/")
 			while [[ "$ip" =~ "::0:" ]]; do
 				ip=$(echo $ip | sed 's/::0:/::/g')
 			done
@@ -911,8 +905,7 @@ function main() {
 				ip=$(echo $ip | sed 's/:::/::/g')
 			done
 
-			ip="[$ip]"
-			##[[ "$2" == "1" ]] && ip="[$ip]"
+			[[ "$2" == "1" ]] && ip="[$ip]"
 			ip_type=6
 			return
 		fi
@@ -937,7 +930,7 @@ function main() {
 		done
 	}
 
-	if [[ -z "$1" ]]; then
+	if [[ ! $1 ]]; then
 		echo -e "No command inserted, use ${YELLOW}dupmn help${NC} to see all the available commands"
 		exit
 	fi
@@ -947,7 +940,7 @@ function main() {
 
 	case "$1" in
 		"profadd")
-			if [[ -z "$2" ]]; then
+			if [[ ! $2 ]]; then
 				echo -e "${YELLOW}dupmn profadd <prof_file> [prof_name]${NC} requires a profile file and optionally a new profile name as parameters"
 				exit
 			fi
@@ -955,7 +948,7 @@ function main() {
 			cmd_profadd "$2" "$3"
 			;;
 		"profdel")
-			if [[ -z "$2" ]]; then
+			if [[ ! $2 ]]; then
 				echo -e "${YELLOW}dupmn profadd <prof_name>${NC} requires a profile name as parameter"
 				exit
 			fi
@@ -963,7 +956,7 @@ function main() {
 			cmd_profdel "$2"
 			;;
 		"install")
-			if [[ -z "$2" ]]; then
+			if [[ ! $2 ]]; then
 				echo -e "${YELLOW}dupmn install <coin_name> [opt_params]${NC} requires a profile name of an added profile as a parameter"
 				exit
 			fi
@@ -972,7 +965,7 @@ function main() {
 			cmd_install "$2" $(($dup_count+1))
 			;;
 		"reinstall")
-			if [[ -z "$3" ]]; then
+			if [[ ! $3 ]]; then
 				echo -e "${YELLOW}dupmn reinstall <coin_name> <number> [opt_params]${NC} requires a profile name and a instance as parameters"
 				exit
 			fi
@@ -982,7 +975,7 @@ function main() {
 			cmd_reinstall "$2" $(($3))
 			;;
 		"uninstall")
-			if [[ -z "$3" ]]; then
+			if [[ ! $3 ]]; then
 				echo -e "${YELLOW}dupmn uninstall <coin_name> <number|all>${NC} requires a profile name and a number (or all) as parameters"
 				exit
 			fi
@@ -995,20 +988,20 @@ function main() {
 			fi
 			;;
 		"bootstrap")
-			if [[ -z "$3" ]]; then
+			if [[ ! $3 ]]; then
 				echo -e "${YELLOW}dupmn bootstrap <prof_name> <number|all> [number]${NC} requires a profile name and a number as parameters"
 				exit
 			fi
 			load_profile "$2" "1"
 			[[ "$3" != "all" ]] && instance_valid "$3" "1"
-			[[ ! -z "$4" ]] && instance_valid "$4" "1"
-			cmd_bootstrap $([[ "$3" == "all" ]] && echo $3 || echo $(($3))) $(($4)) $([[ -z "$4" ]] && echo "1")
+			[[ $4 ]] && instance_valid "$4" "1"
+			cmd_bootstrap $([[ "$3" == "all" ]] && echo $3 || echo $(($3))) $(($4)) $([[ ! $4 ]] && echo "1")
 			;;
 		"iplist")
 			cmd_iplist
 			;;
 		"rpcchange")
-			if [[ -z "$3" ]]; then
+			if [[ ! $3 ]]; then
 				echo -e "${YELLOW}dupmn rpcchange <prof_name> <number> [port]${NC} requires a profile name, instance number and optionally a port number as parameters"
 				exit
 			fi
@@ -1017,7 +1010,7 @@ function main() {
 			cmd_rpcchange "$2" $(($3)) "$4"
 			;;
 		"systemctlall")
-			if [[ -z "$3" ]]; then
+			if [[ ! $3 ]]; then
 				echo -e "${YELLOW}dupmn systemctlall <prof_name> <command>${NC} requires a profile name and a command as parameters"
 				exit
 			fi
@@ -1025,11 +1018,11 @@ function main() {
 			cmd_systemctlall "$2" "$3"
 			;;
 		"list")
-			[[ -n "$2" ]] && load_profile "$2" "1"
+			[[ $2 ]] && load_profile "$2" "1"
 			cmd_list $2
 			;;
 		"swapfile")
-			if [[ -z "$2" ]]; then
+			if [[ ! $2 ]]; then
 				echo -e "${YELLOW}dupmn swapfile <size_in_mbytes>${NC} requires a number as parameter"
 				exit
 			fi
