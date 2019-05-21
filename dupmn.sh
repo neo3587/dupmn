@@ -64,7 +64,7 @@ function load_profile() {
 
 	if [[ ! -f ".dupmn/$1" ]]; then
 		echo -e "${BLUE}$1${NC} profile hasn't been added"
-		echo_json "{\"message\":\"profile hasn't been added\",\"errcode\":1}"
+		echo_json "{\"error\":\"profile hasn't been added\",\"errcode\":4}"
 		exit
 	fi
 
@@ -76,14 +76,14 @@ function load_profile() {
 		if [[ ! "${!prof[@]}" =~ "$var" || -z "${prof[$var]}" ]]; then
 			echo -e "Seems like you modified something that was supposed to remain unmodified: ${MAGENTA}$var${NC} parameter should exists and have a assigned value in ${GREEN}.dupmn/$1${NC} file"
 			echo -e "You can fix it by adding the ${BLUE}$1${NC} profile again"
-			echo_json "{\"message\":\"profile modified\",\"errcode\":2}"
+			echo_json "{\"error\":\"profile modified\",\"errcode\":5}"
 			exit
 		fi
 	done
 	if [[ ! "${!conf[@]}" =~ "$1" || -z "${conf[$1]}" || ! $(is_number "${conf[$1]}") ]]; then
 		echo -e "Seems like you modified something that was supposed to remain unmodified: ${MAGENTA}$1${NC} parameter should exists and have a assigned number in ${GREEN}.dupmn/dupmn.conf${NC} file"
 		echo -e "You can fix it by adding ${MAGENTA}$1=0${NC} to the .dupmn/dupmn.conf file (replace the number 0 for the number of nodes installed with dupmn using the ${BLUE}$1${NC} profile)"
-		echo_json "{\"message\":\"dupmn.conf modified\",\"errcode\":3}"
+		echo_json "{\"error\":\"dupmn.conf modified\",\"errcode\":6}"
 		exit
 	fi
 
@@ -104,7 +104,7 @@ function load_profile() {
 			exec_coin_daemon=$(which $coin_daemon)
 			if [[ ! -f "$exec_coin_daemon" ]]; then
 				echo -e "Can't locate ${GREEN}$coin_daemon${NC}, it must be at the defined path from ${CYAN}\"COIN_PATH\"${NC} or in ${CYAN}/usr/bin/${NC} or ${CYAN}/usr/local/bin/${NC}"
-				echo_json "{\"message\":\"coin daemon can't be found\",\"errcode\":4}"
+				echo_json "{\"error\":\"coin daemon can't be found\",\"errcode\":7}"
 				exit
 			fi
 		fi
@@ -112,7 +112,7 @@ function load_profile() {
 			exec_coin_cli=$(which $coin_cli)
 			if [[ ! -f "$exec_coin_cli" ]]; then
 				echo -e "Can't locate ${GREEN}$coin_cli${NC}, it must be at the defined path from ${CYAN}\"COIN_PATH\"${NC} or in ${CYAN}/usr/bin/${NC} or ${CYAN}/usr/local/bin/${NC}"
-				echo_json "{\"message\":\"coin cli can't be found\",\"errcode\":5}"
+				echo_json "{\"error\":\"coin cli can't be found\",\"errcode\":8}"
 				exit
 			fi
 		fi
@@ -289,7 +289,9 @@ function install_proc() {
 }
 function conf_set_value() {
 	# <$1 = conf_file> | <$2 = key> | <$3 = value> | [$4 = force_create]
-	[[ $(grep -ws "^$2" "$1" | cut -d "=" -f1) == "$2" ]] && sed -i "/^$2=/s/=.*/=$3/" "$1" || ([[ "$4" == "1" ]] && echo -e "$2=$3" >> $1)
+	#[[ $(grep -ws "^$2" "$1" | cut -d "=" -f1) == "$2" ]] && sed -i "/^$2=/s/=.*/=$3/" "$1" || ([[ "$4" == "1" ]] && echo -e "$2=$3" >> $1)
+	local key_line=$(grep -ws "^$2" "$1")
+	[[ "$(echo $key_line | cut -d '=' -f1)" =~ "$2" ]] && sed -i "/^$2/c $(echo $key_line | grep -oP '^[\s\S]{0,}=[\s]{0,}')$3" $1 || $([[ "$4" == "1" ]] && echo -e "$2=$3" >> $1)
 }
 function conf_get_value() {
 	# <$1 = conf_file> | <$2 = key> | [$3 = limit]
@@ -330,7 +332,7 @@ function cmd_profadd() {
 
 	if [[ ! -f $1 ]]; then
 		echo -e "${BLUE}$1${NC} file doesn't exists"
-		echo_json "{\"message\":\"provided file doesn't exists\",\"errcode\":5}"
+		echo_json "{\"error\":\"provided file doesn't exists\",\"errcode\":13}"
 		return
 	fi
 
@@ -340,11 +342,11 @@ function cmd_profadd() {
 	for var in "${CMD_ARRAY[@]}"; do
 		if [[ ! "${!prof[@]}" =~ "$var" ]]; then
 			echo -e "${MAGENTA}$var${NC} doesn't exists in the supplied profile file"
-			echo_json "{\"message\":\"missing variable: $var\",\"errcode\":6}"
+			echo_json "{\"error\":\"missing variable: $var\",\"errcode\":14}"
 			return
 		elif [[ -z "${prof[$var]}" ]]; then
 			echo -e "${MAGENTA}$var${NC} doesn't contain a value in the supplied profile file"
-			echo_json "{\"message\":\"missing value: $var\",\"errcode\":7}"
+			echo_json "{\"error\":\"missing value: $var\",\"errcode\":15}"
 			return
 		fi
 	done
@@ -353,7 +355,7 @@ function cmd_profadd() {
 
 	if [[ "$prof_name" = "dupmn.conf" ]]; then
 		echo -e "From the infinite amount of possible names for the profile and you had to choose the only one that you can't use... for god sake..."
-		echo_json "{\"message\":\"reserved profile name\",\"errcode\":8}"
+		echo_json "{\"error\":\"reserved profile name\",\"errcode\":16}"
 		return
 	fi
 
@@ -376,6 +378,7 @@ function cmd_profadd() {
 
 	echo -e "${BLUE}$prof_name${NC} profile successfully added, use ${GREEN}dupmn install $prof_name${NC} to create a new instance of the masternode"
 
+	local retcode=0
 	if [[ -z "${prof[COIN_SERVICE]}" ]]; then
 		echo -e "\n${YELLOW}WARNING:${NC} The provided profile doesn't have a ${CYAN}\"COIN_SERVICE\"${NC} parameter, the dupmn script won't be able to stop the main node on some commands"
 		if [[ -t 1 ]]; then
@@ -389,23 +392,20 @@ function cmd_profadd() {
 				[[ $yesno =~ ^[Yy]$|^[Yy][Ee][Ss]$ ]] && echo -e "${CYAN}${prof[COIN_NAME]}.service${NC} set as main node service" || return
 			fi
 			conf_set_value .dupmn/$prof_name "COIN_SERVICE" "\"${prof[COIN_NAME]}.service\"" "1"
-			echo_json "{\"message\":\"profile successfully added\",\"syscode\":1,\"errcode\":0}"
-			return
-		fi
-		if [[ $(load_profile "$prof_name" "1") ]]; then
+			retcode=1
+		elif [[ $(load_profile "$prof_name" "1") ]]; then
 			echo -e "${RED}ERROR:${NC} Can't find the binaries of the main node to make the service, make sure that you have installed the masternode and retry this command to create a service"
-			echo_json "{\"message\":\"profile successfully added\",\"syscode\":2,\"errcode\":0}"
-			return
+			retcode=2
+		else
+			load_profile "$prof_name" "1"
+			configure_systemd
+			conf_set_value .dupmn/$prof_name "COIN_SERVICE" "\"${prof[COIN_NAME]}.service\"" "1"
+			echo -e "Service for ${BLUE}$prof_name${NC} main node created"
+			retcode=3
 		fi
-		load_profile "$prof_name" "1"
-		configure_systemd
-		conf_set_value .dupmn/$prof_name "COIN_SERVICE" "\"${prof[COIN_NAME]}.service\"" "1"
-		echo -e "Service for ${BLUE}$prof_name${NC} main node created"
-		echo_json "{\"message\":\"profile successfully added\",\"syscode\":3,\"errcode\":0}"
-		return
 	fi
 
-	echo_json "{\"message\":\"profile successfully added\",\"syscode\":0,\"errcode\":0}"
+	echo_json "{\"message\":\"profile successfully added\",\"retcode\":$retcode}"
 }
 function cmd_profdel() {
 	# <$1 = profile_name>
@@ -417,7 +417,8 @@ function cmd_profdel() {
 		fi
 		cmd_uninstall $1 all #3> /dev/null
 	fi
-	sed -i "/$1\=/d" ".dupmn/dupmn.conf"
+	sed -i "/$1\=/d" .dupmn/dupmn.conf
+	sed -i "/^$/d"   .dupmn/dupmn.conf
 
 	rm -rf /usr/bin/$coin_daemon-0
 	rm -rf /usr/bin/$coin_daemon-all
@@ -425,7 +426,7 @@ function cmd_profdel() {
 	rm -rf /usr/bin/$coin_cli-all
 	rm -rf .dupmn/$1
 
-	echo_json "{\"message\":\"profile successfully deleted\",\"errcode\":0}"
+	echo_json "{\"message\":\"profile successfully deleted\"}" # add deleted MNs count
 }
 function cmd_install() {
 	# <$1 = profile_name> | <$2 = instance_number>
@@ -443,10 +444,10 @@ function cmd_install() {
 		# ipv4 => grep tcp + list ip 0.0.0.0 || grep ipv6 => tcp6 + list ip ::
 		# foreach ipv4 or ipv6 => warn if ip:port exists
 
-		$(conf_set_value $new_folder/$coin_config "listen"         "1"         1)
+		$(conf_set_value $new_folder/$coin_config "listen"         "1"          1)
 		$(conf_set_value $new_folder/$coin_config "externalip"     $ip:$mn_port 0)
 		$(conf_set_value $new_folder/$coin_config "masternodeaddr" $ip:$mn_port 0)
-		$(conf_set_value $new_folder/$coin_config "bind"           $ip         1)
+		$(conf_set_value $new_folder/$coin_config "bind"           $ip          1)
 
 		if [[ ! $(conf_get_value $coin_folder/$coin_config "bind") ]]; then
 			echo -e "Adding the ${CYAN}bind${NC} parameter to the main node conf file, this only will be applied this time..."
@@ -480,20 +481,23 @@ function cmd_install() {
 			\nNOTE 1: ${GREEN}$coin_cli-0${NC} and ${GREEN}$coin_daemon-0${NC} are just a reference to the 'main masternode', not a created one with dupmn.\
 			\nNOTE 2: You can use ${GREEN}$coin_cli-all [parameters]${NC} and ${GREEN}$coin_daemon-all [parameters]${NC} to apply the parameters on all masternodes. Example: ${GREEN}$coin_cli-all masternode status${NC}\
 			\n==================================================================================================="
-
+	
+	local retcode=0
 	if [[ $ip ]]; then
 		for (( i=0; i<$dup_count; i++ )); do 
 			if [[ $i != $2 && $(conf_get_value $(get_folder $i)$coin_config "bind") == "$ip" ]]; then
 				echo -e "${RED}WARNING:${NC} looks like that the ${BLUE}node $i${NC} already uses the same IP, it may cause that this dupe doesn't work"
+				((retcode+=1))
 				break;
 			fi
 		done
 		if [[ ! $(echo get_ips 4 | grep -w $ip) && ! $(echo get_ips 6 | grep -w ${ip:1:-1}) ]]; then
 			echo -e "${RED}WARNING:${NC} IP ${GREEN}$ip${NC} is probably not added, the node may not work due to using a non-existent IP"
+			((retcode+=2))
 		fi
 	fi
 
-	echo_json "{\"message\":\"profile successfully installed\",\"ip\":\"$([[ $show_ip ]] && echo $show_ip || echo undefined)\",\"port\":\"$mn_port\",\"rpc\":\"$new_rpc\",\"privkey\":\"$new_key\",\"dup\":$2,\"errcode\":0}"
+	echo_json "{\"message\":\"profile successfully installed\",\"ip\":\"$([[ $show_ip ]] && echo $show_ip || echo undefined)\",\"port\":\"$mn_port\",\"rpc\":\"$new_rpc\",\"privkey\":\"$new_key\",\"dup\":$2,\"retcode\":$retcode}"
 }
 function cmd_reinstall() {
 	# <$1 = profile_name> | <$2 = instance_number>
@@ -576,18 +580,22 @@ function cmd_ipadd() {
 	elif [[ $ip_type == 6 ]]; then
 		if [[ $(conf_get_value /etc/sysctl.conf net.ipv6.conf.all.disable_ipv6) == "1" ]]; then
 			echo -e "IPv6 addresses are currently disabled, applying a change on ${MAGENTA}/etc/sysctl.conf${NC} to enable them"
-			conf_set_value /etc/sysctl.conf net.ipv6.conf.all.disable_ipv6 0 # need to change conf_set_value to track & keep spaces between key & value
+			conf_set_value /etc/sysctl.conf net.ipv6.conf.all.disable_ipv6 0
 			sysctl -p
 		fi
+		# ! is_number $2 => exit
+		# ! $3 in ifaces => exit
 		ip -6 addr add $1/$2 dev $3
 	fi
 }
 function cmd_ipdel() {
+	# <$1 = IP>
 	if [[ ip_type == 4 ]]; then
-		# if netmask has ip structure => netmask_cidr
 		echo "IPv4 addresses are not yet supported"
 	elif [[ ip_type == 6 ]]; then
-		# $1/$2 in $(get_ips 6 1 $3)
+		for iface in $(ls /sys/class/net | grep -v "lo"); do
+			$(get_ips 6 0 $iface)
+		done
 		ip -6 addr del $1/$2 dev $3
 	fi
 }
@@ -858,12 +866,15 @@ function main() {
 
 		if [[ ! $(is_number $1) ]]; then
 			echo -e "${RED}$1${NC} is not a number"
+			echo_json "{\"error\":\"not a number: $1\",\"errcode\":9}"
 			exit
 		elif [[ $(($1)) = 0 && "$2" != "1" ]]; then
 			echo -e "Instance ${CYAN}0${NC} is a reference to the main masternode, not a duplicated one, can't use this one"
+			echo_json "{\"error\":\"main node reference not allowed\",\"errcode\":10}"
 			exit
 		elif [[ $(($1)) -gt $dup_count ]]; then
 			echo -e "Instance ${CYAN}$(($1))${NC} doesn't exists, there are only ${CYAN}$dup_count${NC} instances of ${BLUE}$profile_name${NC}"
+			echo_json "{\"error\":\"not existing dupe\",\"errcode\":11}"
 			exit
 		fi
 	}
@@ -911,6 +922,7 @@ function main() {
 		fi
 
 		echo -e "${GREEN}$1${NC} doesn't have the structure of a IPv4 or a IPv6"
+		echo_json "{\"error\":\"not a IP: $1\",\"errcode\":12}"
 		exit
 	}
 	function opt_install_params() {
@@ -929,9 +941,18 @@ function main() {
 			fi
 		done
 	}
+	function exit_no_param() {
+		# <$1 = param> | <$2 = message>
+		if [[ ! $2 ]]; then
+			echo -e "$2"
+			echo_json "{\"error\":\"$(echo "$2" | sed 's/\x1b\[[0-9;]*m//g')\",\"errcode\":3}"
+			exit
+		fi
+	}
 
 	if [[ ! $1 ]]; then
 		echo -e "No command inserted, use ${YELLOW}dupmn help${NC} to see all the available commands"
+		echo_json "{\"error\":\"no command inserted\",\"errcode\":1}"
 		exit
 	fi
 
@@ -940,45 +961,30 @@ function main() {
 
 	case "$1" in
 		"profadd")
-			if [[ ! $2 ]]; then
-				echo -e "${YELLOW}dupmn profadd <prof_file> [prof_name]${NC} requires a profile file and optionally a new profile name as parameters"
-				exit
-			fi
+			exit_no_param "$2" "${YELLOW}dupmn profadd <prof_file> [prof_name]${NC} requires a profile file and optionally a new profile name as parameters"
 			cd $curr_dir
 			cmd_profadd "$2" "$3"
 			;;
 		"profdel")
-			if [[ ! $2 ]]; then
-				echo -e "${YELLOW}dupmn profadd <prof_name>${NC} requires a profile name as parameter"
-				exit
-			fi
+			exit_no_param "$2" "${YELLOW}dupmn profadd <prof_name>${NC} requires a profile name as parameter"
 			load_profile "$2"
 			cmd_profdel "$2"
 			;;
 		"install")
-			if [[ ! $2 ]]; then
-				echo -e "${YELLOW}dupmn install <coin_name> [opt_params]${NC} requires a profile name of an added profile as a parameter"
-				exit
-			fi
+			exit_no_param "$2" "${YELLOW}dupmn install <coin_name> [opt_params]${NC} requires a profile name of an added profile as a parameter"
 			load_profile "$2" "1"
 			opt_install_params "${@:3}"
 			cmd_install "$2" $(($dup_count+1))
 			;;
 		"reinstall")
-			if [[ ! $3 ]]; then
-				echo -e "${YELLOW}dupmn reinstall <coin_name> <number> [opt_params]${NC} requires a profile name and a instance as parameters"
-				exit
-			fi
+			exit_no_param "$3" "${YELLOW}dupmn reinstall <coin_name> <number> [opt_params]${NC} requires a profile name and a instance as parameters"
 			load_profile "$2" "1"
 			instance_valid "$3"
 			opt_install_params "${@:4}"
 			cmd_reinstall "$2" $(($3))
 			;;
 		"uninstall")
-			if [[ ! $3 ]]; then
-				echo -e "${YELLOW}dupmn uninstall <coin_name> <number|all>${NC} requires a profile name and a number (or all) as parameters"
-				exit
-			fi
+			exit_no_param "$3" "${YELLOW}dupmn uninstall <coin_name> <number|all>${NC} requires a profile name and a number (or all) as parameters"
 			load_profile "$2"
 			if [[ "$3" != "all" ]]; then
 				instance_valid "$3"
@@ -988,10 +994,7 @@ function main() {
 			fi
 			;;
 		"bootstrap")
-			if [[ ! $3 ]]; then
-				echo -e "${YELLOW}dupmn bootstrap <prof_name> <number|all> [number]${NC} requires a profile name and a number as parameters"
-				exit
-			fi
+			exit_no_param "$3" "${YELLOW}dupmn bootstrap <prof_name> <number|all> [number]${NC} requires a profile name and a number as parameters"
 			load_profile "$2" "1"
 			[[ "$3" != "all" ]] && instance_valid "$3" "1"
 			[[ $4 ]] && instance_valid "$4" "1"
@@ -1001,19 +1004,13 @@ function main() {
 			cmd_iplist
 			;;
 		"rpcchange")
-			if [[ ! $3 ]]; then
-				echo -e "${YELLOW}dupmn rpcchange <prof_name> <number> [port]${NC} requires a profile name, instance number and optionally a port number as parameters"
-				exit
-			fi
+			exit_no_param "$3" "${YELLOW}dupmn rpcchange <prof_name> <number> [port]${NC} requires a profile name, instance number and optionally a port number as parameters"
 			load_profile "$2" "1"
 			instance_valid "$3"
 			cmd_rpcchange "$2" $(($3)) "$4"
 			;;
 		"systemctlall")
-			if [[ ! $3 ]]; then
-				echo -e "${YELLOW}dupmn systemctlall <prof_name> <command>${NC} requires a profile name and a command as parameters"
-				exit
-			fi
+			exit_no_param "$3" "${YELLOW}dupmn systemctlall <prof_name> <command>${NC} requires a profile name and a command as parameters"
 			load_profile "$2"
 			cmd_systemctlall "$2" "$3"
 			;;
@@ -1022,10 +1019,7 @@ function main() {
 			cmd_list $2
 			;;
 		"swapfile")
-			if [[ ! $2 ]]; then
-				echo -e "${YELLOW}dupmn swapfile <size_in_mbytes>${NC} requires a number as parameter"
-				exit
-			fi
+			exit_no_param "$2" "${YELLOW}dupmn swapfile <size_in_mbytes>${NC} requires a number as parameter"
 			cmd_swapfile "$2"
 			;;
 		"checkmem")
@@ -1040,6 +1034,7 @@ function main() {
 		*)
 			echo -e "Unrecognized parameter: ${RED}$1${NC}"
 			echo -e "use ${YELLOW}dupmn help${NC} to see all the available commands"
+			echo_json "{\"error\":\"unknown command: $1\",\"errcode\":2}"
 			;;
 	esac
 }
