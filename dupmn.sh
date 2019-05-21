@@ -943,7 +943,7 @@ function main() {
 	}
 	function exit_no_param() {
 		# <$1 = param> | <$2 = message>
-		if [[ ! $2 ]]; then
+		if [[ ! $1 ]]; then
 			echo -e "$2"
 			echo_json "{\"error\":\"$(echo "$2" | sed 's/\x1b\[[0-9;]*m//g')\",\"errcode\":3}"
 			exit
