@@ -4,27 +4,15 @@
 # Source: https://github.com/neo3587/dupmn
 
 # TODO:
-# - fix ipv6 parser, may fail under certain conditions
-# - dupmn any_command 3>&1 &>/dev/null => get a json instead
-# - dupmn ipadd <ip> <netmask> <inc> # may require hard reset with IPv4
-# - dupmn ipdel <ip> # not main one
-# options (all of them requires a lot of debug for ipadd and ipdel):
-#	1. /etc/network/interfaces : tricky and dangerous but most effective, requires hard restart (combinate with 2. to not require hard restart ?)
-#   2. /etc/init.d/dupmn_ip_manager => ip address add IP/netmask_cidr(NET_MASK) dev INTERFACE : viable, no reset needed, add [Service] ExecStartPre=/bin/sleep 10
-#		#For permanent activation, either a special initscript value per interface will enable privacy or an entry in the /etc/sysctl.conf file like
-#		net.ipv6.conf.eth0.use_tempaddr=2
-#		#Note: interface must already exists with proper name when sysctl.conf is applied. If this is not the case (e.g. after reboot) one has to configure privacy for all interfaces by default:
-#		net.ipv6.conf.all.use_tempaddr=2
-#		net.ipv6.conf.default.use_tempaddr=2
-#		#Changed/added values in /etc/sysctl.conf can be activated during runtime, but at least an interface down/up or a reboot is recommended.
-#		sysctl -p
-#
+# - dupmn any_command 3>&1 &>/dev/null => get a json instead (looot of work)
+# - dupmn ipadd => allow IPv4 & keep them after reboot
 #
 # ip bind options:
 #   1. bind main & dupe
 #   2. bind dupe on unused port => need to check if actually can be activated
 #
 # coin profile opt parameter => FORCE_IP=IPv4/IPv6
+# autocreate => 2001:db8::any/64 
 #
 
 
@@ -304,12 +292,12 @@ function make_chmod_file() {
 }
 function get_ips() {
 	# <$1 = 4 or 6> | [$2 = netmask] | [$3 = interface]
-	if [[ "$1" = "4" ]]; then
+	if [[ $1 == 4 ]]; then
 		local get_ip4=$(ip addr show | grep -Eo 'inet (addr:)?([0-9]*\.){3}[0-9]*/[0-9]*' | grep -Eo '([0-9]*\.){3}[0-9]*/*[0-9]*' | grep -v '127.0.0.1')
-		[[ "$2" != "1" ]] && echo -e $get_ip4 | cut -d / -f1 || echo -e $get_ip4
-	elif [[ "$1" = "6" ]]; then
+		[[ $2 != 1 ]] && echo -e $get_ip4 | cut -d / -f1 || echo -e $get_ip4
+	elif [[ $1 == 6 ]]; then
 		local get_ip6=$(ip addr show $3 | awk '/inet6/{print $2}' | grep -v '::1/128')
-		[[ "$2" != "1" ]] && echo -e $get_ip6 | cut -d / -f1 || echo -e $get_ip6
+		[[ $2 != 1 ]] && echo -e $get_ip6 | cut -d / -f1 || echo -e $get_ip6
 	fi
 }
 function netmask_cidr() {
@@ -353,7 +341,7 @@ function cmd_profadd() {
 
 	local prof_name=$([[ ! $2 ]] && echo ${prof[COIN_NAME]} || echo "$2")
 
-	if [[ "$prof_name" = "dupmn.conf" ]]; then
+	if [[ $prof_name == "dupmn.conf" ]]; then
 		echo -e "From the infinite amount of possible names for the profile and you had to choose the only one that you can't use... for god sake..."
 		echo_json "{\"error\":\"reserved profile name\",\"errcode\":16}"
 		return
@@ -371,7 +359,7 @@ function cmd_profadd() {
 	if [[ ${fix_path:${#fix_path}-1:1} != "/" ]]; then
 		sed -i "/^COIN_PATH=/s/=.*/=\"${fix_path//"/"/"\/"}\/\"/" .dupmn/$prof_name
 	fi
-	if [[ ${fix_folder:${#fix_folder}-1:1} = "/" ]]; then
+	if [[ ${fix_folder:${#fix_folder}-1:1} == "/" ]]; then
 		fix_folder=${fix_folder::-1}
 		sed -i "/^COIN_FOLDER=/s/=.*/=\"${fix_folder//"/"/"\/"}\"/" .dupmn/$prof_name
 	fi
@@ -518,7 +506,7 @@ function cmd_reinstall() {
 function cmd_uninstall() {
 	# <$1 = profile_name> | <$2 = instance_number/all>
 
-	if [ $dup_count = 0 ]; then
+	if [ $dup_count == 0 ]; then
 		echo -e "There aren't duplicated ${BLUE}$1${NC} masternodes to remove"
 		exit
 	fi
@@ -578,26 +566,29 @@ function cmd_ipadd() {
 		# if netmask has ip structure => netmask_cidr
 		echo "IPv4 addresses are not yet supported"
 	elif [[ $ip_type == 6 ]]; then
+		[[ ! $(is_number $2) || $2 -lt 0 || $2 -gt 128 ]] && echo -e "Netmask must be a value between 0 and 128" && exit
+		[[ ! $(ls /sys/class/net | grep -v "lo" | grep "^$3$") ]] && echo -e "Interface \"$3\" not exists, use ${YELLOW}dupmn iplist${NC} to see the existing interfaces" && exit
 		if [[ $(conf_get_value /etc/sysctl.conf net.ipv6.conf.all.disable_ipv6) == "1" ]]; then
 			echo -e "IPv6 addresses are currently disabled, applying a change on ${MAGENTA}/etc/sysctl.conf${NC} to enable them"
 			conf_set_value /etc/sysctl.conf net.ipv6.conf.all.disable_ipv6 0
 			sysctl -p
 		fi
-		# ! is_number $2 => exit
-		# ! $3 in ifaces => exit
-		ip -6 addr add $1/$2 dev $3
+		ip -6 addr add $1/$(($2)) dev $3
 	fi
+	# echo_json message, ip, ip_type, netmask, iface
 }
 function cmd_ipdel() {
-	# <$1 = IP>
-	if [[ ip_type == 4 ]]; then
+	# <$1 = IP> | <$2 = netmask> | <$3 = interface>
+	if [[ $ip_type == 4 ]]; then
+		# if netmask has ip structure => netmask_cidr
 		echo "IPv4 addresses are not yet supported"
-	elif [[ ip_type == 6 ]]; then
-		for iface in $(ls /sys/class/net | grep -v "lo"); do
-			$(get_ips 6 0 $iface)
-		done
-		ip -6 addr del $1/$2 dev $3
+	elif [[ $ip_type == 6 ]]; then
+		[[ ! $(is_number $2) || $2 -lt 0 || $2 -gt 128 ]] && echo -e "Netmask must be a value between 0 and 128" && exit
+		[[ ! $(ls /sys/class/net | grep -v "lo" | grep "^$3$") ]] && echo -e "Interface \"$3\" not exists, use ${YELLOW}dupmn iplist${NC} to see the existing interfaces" && exit
+		[[ ! $(get_ips 6 1 $3 | grep "$ip/$(($2))") ]] && echo -e "IP $1/$(($2)) doesn't exists in the interface $3" && exit
+		ip -6 addr del $1/$(($2)) dev $3
 	fi
+	# echo_json message, ip, ip_type, netmask, iface
 }
 function cmd_bootstrap() {
 	# <$1 = destiny> | <$2 = origin> | [$3 = try_dupes]
@@ -764,14 +755,14 @@ function cmd_swapfile() {
 	local avail_mb=$(df / --output=avail -m | grep [0-9])
 	local total_mb=$(df / --output=size -m | grep [0-9])
 
-	if [[ $(($1)) -ge $(($avail_mb)) ]]; then
+	if [[ $1 -ge $(($avail_mb)) ]]; then
 		echo -e "There's only $(($avail_mb)) MB available in the hard disk"
 		exit
 	fi
 
 	[[ -f /mnt/dupmn_swapfile ]] && swapoff /mnt/dupmn_swapfile > /dev/null 2>&1
 
-	if [[ $(($1)) = 0 ]]; then
+	if [[ $1 -eq 0 ]]; then
 		rm -rf /mnt/dupmn_swapfile
 		echo -e "Swapfile deleted"
 	else
@@ -824,10 +815,12 @@ function cmd_help() {
 			\n  - ${YELLOW}dupmn uninstall <prof_name> <number|all>          ${NC}Uninstall the specified instance of the given profile name, you can put ${YELLOW}all${NC} instead of a number to uninstall all the duplicated instances.\
 			\n  - ${YELLOW}dupmn bootstrap <prof_name> <number|all> [number] ${NC}Copies the chain from the main node to a dupe or optionally from one dupe to another one.\
 			\n  - ${YELLOW}dupmn iplist                                      ${NC}Shows all your configurated IPv4 and IPv6.\
+			\n  - ${YELLOW}dupmn ipadd <ip> <netmask> <interface>            ${NC}Allows the system to recognize a new IPv4 or IPv6.\
+			\n  - ${YELLOW}dupmn ipdel <ip> <netmask> <interface>            ${NC}Deletes an already recognized IPv4 or IPv6.\
 			\n  - ${YELLOW}dupmn rpcchange <prof_name> <number> [port]       ${NC}Changes the RPC port used from the given number instance with the new one (or finds a new one by itself if no port is given).\
 			\n  - ${YELLOW}dupmn systemctlall <prof_name> <command>          ${NC}Applies the systemctl command to all the duplicated instances of the given profile name (but not the main instance).\
 			\n  - ${YELLOW}dupmn list [prof_name]                            ${NC}Shows the amount of duplicated instances of every masternode, if a profile name is provided, it lists an extended info of the profile instances.\
-			\n  - ${YELLOW}dupmn checkmem                                    ${NC}Shows the memory usage (%) of every group of nodes.
+			\n  - ${YELLOW}dupmn checkmem                                    ${NC}Shows the memory usage (%) of every group of nodes.\
 			\n  - ${YELLOW}dupmn swapfile <size_in_mbytes>                   ${NC}Creates, changes or deletes (if parameter is 0) a swapfile of the given size in MB to increase the virtual memory.\
 			\n  - ${YELLOW}dupmn update                                      ${NC}Checks the last version of the script and updates it if necessary.\
 			\n**NOTE 1**: ${YELLOW}<parameter>${NC} means required, ${YELLOW}[parameter]${NC} means optional.\
@@ -868,11 +861,11 @@ function main() {
 			echo -e "${RED}$1${NC} is not a number"
 			echo_json "{\"error\":\"not a number: $1\",\"errcode\":9}"
 			exit
-		elif [[ $(($1)) = 0 && "$2" != "1" ]]; then
+		elif [[ $1 -eq 0 && "$2" != "1" ]]; then
 			echo -e "Instance ${CYAN}0${NC} is a reference to the main masternode, not a duplicated one, can't use this one"
 			echo_json "{\"error\":\"main node reference not allowed\",\"errcode\":10}"
 			exit
-		elif [[ $(($1)) -gt $dup_count ]]; then
+		elif [[ $1 -gt $dup_count ]]; then
 			echo -e "Instance ${CYAN}$(($1))${NC} doesn't exists, there are only ${CYAN}$dup_count${NC} instances of ${BLUE}$profile_name${NC}"
 			echo_json "{\"error\":\"not existing dupe\",\"errcode\":11}"
 			exit
@@ -936,7 +929,7 @@ function main() {
 				[[ ! $(port_check $new_rpc) ]] && echo "given -rpcport seems to be in use" && exit
 			elif [[ ! $new_key && "$x" =~ ^-privkey=* ]]; then
 				new_key=${x:9}
-			elif [[ ! $install_bootstrap && "$x" = -bootstrap ]]; then
+			elif [[ ! $install_bootstrap && "$x" == -bootstrap ]]; then
 				install_bootstrap="1"
 			fi
 		done
@@ -1002,6 +995,16 @@ function main() {
 			;;
 		"iplist")
 			cmd_iplist
+			;;
+		"ipadd")
+			exit_no_param "$4" "${YELLOW}dupmn ipadd <ip> <netmask> <iface>${NC} requires a IP, a netmask and a interface name"
+			ip_parse "$2"
+			cmd_ipadd "$2" "$3" "$4"
+			;;
+		"ipdel")
+			exit_no_param "$4" "${YELLOW}dupmn ipdel <ip> <netmask> <iface>${NC} requires a IP, a netmask and a interface name"
+			ip_parse "$2"
+			cmd_ipdel "$2" "$3" "$4"
 			;;
 		"rpcchange")
 			exit_no_param "$3" "${YELLOW}dupmn rpcchange <prof_name> <number> [port]${NC} requires a profile name, instance number and optionally a port number as parameters"
