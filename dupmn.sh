@@ -5,7 +5,7 @@
 
 # TODO:
 # - dupmn any_command 3>&1 &>/dev/null => get a json instead (looot of work)
-# - dupmn ipadd => allow IPv4 & keep them after reboot
+# - dupmn ipadd/ipdel => allow IPv4 & keep them after reboot
 #
 # ip bind options:
 #   1. bind main & dupe
@@ -292,13 +292,8 @@ function make_chmod_file() {
 }
 function get_ips() {
 	# <$1 = 4 or 6> | [$2 = netmask] | [$3 = interface]
-	if [[ $1 == 4 ]]; then
-		local get_ip4=$(ip addr show | grep -Eo 'inet (addr:)?([0-9]*\.){3}[0-9]*/[0-9]*' | grep -Eo '([0-9]*\.){3}[0-9]*/*[0-9]*' | grep -v '127.0.0.1')
-		[[ $2 != 1 ]] && echo -e $get_ip4 | cut -d / -f1 || echo -e $get_ip4
-	elif [[ $1 == 6 ]]; then
-		local get_ip6=$(ip addr show $3 | awk '/inet6/{print $2}' | grep -v '::1/128')
-		[[ $2 != 1 ]] && echo -e $get_ip6 | cut -d / -f1 || echo -e $get_ip6
-	fi
+	local get_ip=$(ip -$1 addr show $3 | grep "scope global" | awk '{print $2}')
+	[[ $2 != 1 ]] && echo -e $get_ip | cut -d / -f1 || echo -e $get_ip
 }
 function netmask_cidr() {
 	# <$1 = netmask>
@@ -764,6 +759,7 @@ function cmd_swapfile() {
 
 	if [[ $1 -eq 0 ]]; then
 		rm -rf /mnt/dupmn_swapfile
+		sed -i "/\/mnt\/dupmn_swapfile/d" /etc/fstab
 		echo -e "Swapfile deleted"
 	else
 		echo -e "Generating swapfile, this may take some time depending on the size..."
@@ -773,6 +769,7 @@ function cmd_swapfile() {
 		mkswap /mnt/dupmn_swapfile > /dev/null 2>&1
 		swapon /mnt/dupmn_swapfile > /dev/null 2>&1
 		/mnt/dupmn_swapfile swap swap defaults 0 0 > /dev/null 2>&1
+		[[ ! $(cat /etc/fstab | grep "/mnt/dupmn_swapfile") ]] && echo "/mnt/dupmn_swapfile none swap 0 0" >> /etc/fstab
 		echo -e "Swapfile new size = ${GREEN}$(($1)) MB${NC}"
 	fi
 
