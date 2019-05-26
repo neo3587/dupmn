@@ -13,7 +13,7 @@
 #   2. bind dupe on unused port => need to check if actually can be activated
 #
 # coin profile opt parameter => FORCE_IP=IPv4/IPv6
-# autocreate => 2001:db8::any/64 
+# autocreate => 2001:db8::any/64
 #
 
 
@@ -307,6 +307,8 @@ function netmask_cidr() {
             done
         done
         echo $nbits
+    elif [[ $(is_number $1) ]]; then
+		echo $1
 	fi
 }
 
@@ -571,7 +573,7 @@ function cmd_ipmod() {
 	[[ ! $(ls /sys/class/net | grep -v "lo" | grep "^$4$") ]] && echo -e "Interface \"$4\" doesn't exists, use ${YELLOW}dupmn iplist${NC} to see the existing interfaces" && exit
 
 	if [[ $IP_TYPE == 6 ]]; then
-		
+
 		if [[ $1 == "add" && $(conf_get_value /etc/sysctl.conf net.ipv6.conf.all.disable_ipv6) == "1" ]]; then
 			echo -e "IPv6 addresses are currently disabled, applying a change on ${MAGENTA}/etc/sysctl.conf${NC} to enable them"
 			conf_set_value /etc/sysctl.conf net.ipv6.conf.all.disable_ipv6 0
@@ -580,9 +582,9 @@ function cmd_ipmod() {
 		if [[ $1 == "del" && ! $(get_ips 6 1 $4 | grep "$IP/$(($netmask))") ]]; then
 			echo -e "IP $2/$(($netmask)) doesn't exists in the interface $4" && exit
 		fi
-		
-		local ip_res=$(ip -6 addr $1 $2/$(($netmask)) dev $4)
-		[[ $ip_res ]] && echo -e "IP $2 successfully added" || echo -e "ERROR: $ip_res"
+
+		local ip_res=$(ip -6 addr $1 $2/$(($netmask)) dev $4 2>&1)
+		[[ ! $ip_res ]] && echo -e "IP $2 successfully added" || echo -e "ERROR: $ip_res"
 	fi
 	# echo_json message, ip, ip_type, netmask, iface
 }
@@ -997,12 +999,12 @@ function main() {
 		"ipadd")
 			exit_no_param "$4" "${YELLOW}dupmn ipadd <ip> <netmask> <iface>${NC} requires a IP, a netmask and a interface name"
 			ip_parse "$2"
-			cmd_ipadd "add" "$2" "$3" "$4"
+			cmd_ipmod "add" "$2" "$3" "$4"
 			;;
 		"ipdel")
 			exit_no_param "$4" "${YELLOW}dupmn ipdel <ip> <netmask> <iface>${NC} requires a IP, a netmask and a interface name"
 			ip_parse "$2"
-			cmd_ipdel "del" "$2" "$3" "$4"
+			cmd_ipmod "del" "$2" "$3" "$4"
 			;;
 		"rpcchange")
 			exit_no_param "$3" "${YELLOW}dupmn rpcchange <prof_name> <number> [port]${NC} requires a profile name, instance number and optionally a port number as parameters"
