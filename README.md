@@ -1,6 +1,6 @@
 # Duplicate MasterNode (dupmn)
 
-A script to easily create and manage multiple masternodes of the same coin in the same VPS, initially made for BCARD, can be adapted for almost any other coin.
+A script to easily create and manage multiple masternodes of the same coin in the same VPS, can be easily adapted for almost any other coin by creating a [profile](#profile-creation).
 
 *Note: For any technical question not resolved in this readme, check <a href="https://github.com/neo3587/dupmn/wiki/FAQs">the FAQ</a>.*
 
@@ -41,8 +41,8 @@ Check the [Usage example](#usage-example) to see the guide of the steps to follo
 - [`dupmn uninstall <profile_name> <number|all>`](https://github.com/neo3587/dupmn/wiki/Commands#uninstall) : Uninstall the specified instance of the given profile name, you can put `all` instead of a number to uninstall all the duplicated instances.
 - [`dupmn bootstrap <profile_name> <number|all> [number]`](https://github.com/neo3587/dupmn/wiki/Commands#bootstrap) : Copies the main node stored chain to a dupe, using `all` instead of a number will apply a bootstrap to all the other nodes, optionally you can put a dupe number to copy from one dupe to another.
 - [`dupmn iplist`](https://github.com/neo3587/dupmn/wiki/Commands#iplist) : Shows your current IPv4 and IPv6 addresses.
-- [`dupmn ipadd <ip> <netmask> <interface>`](https://github.com/neo3587/dupmn/wiki/Commands#ipadd) : Adds an IPv4 or IPv6 address.
-- [`dupmn ipdel <ip> <netmask> <interface>`](https://github.com/neo3587/dupmn/wiki/Commands#ipdel) : Deletes an IPv4 or IPv6 address.
+- [`dupmn ipadd <ip> <netmask> [interface]`](https://github.com/neo3587/dupmn/wiki/Commands#ipadd) : Adds an IPv4 or IPv6 address.
+- [`dupmn ipdel <ip> <netmask> [interface]`](https://github.com/neo3587/dupmn/wiki/Commands#ipdel) : Deletes an IPv4 or IPv6 address.
 - [`dupmn rpcchange <profile_name> <number> [port]`](https://github.com/neo3587/dupmn/wiki/Commands#rpcchange) : Changes the rpc port of the given instance number, this is only in case that by chance it causes a conflict with another application that uses the same port (if no port is provided, it will automatically find any free port).
 - [`dupmn systemctlall <profile_name> <command>`](https://github.com/neo3587/dupmn/wiki/Commands#systemctlall) : Applies the systemctl command to all services created with the given profile (will only affect the main node too if the profile haves the COIN_SERVICE parameter).
 - [`dupmn list [profile_name]`](https://github.com/neo3587/dupmn/wiki/Commands#list) : Shows the amount of duplicated instances of every masternode, if a profile name is provided, it lists an extended info of the profile instances.
