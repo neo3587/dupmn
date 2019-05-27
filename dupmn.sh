@@ -4,16 +4,10 @@
 # Source: https://github.com/neo3587/dupmn
 
 # TODO:
-# - dupmn ipadd|ipdel <ip> <netmask> [iface] => apply if single iface (not "lo")
+# - dupmn list => total count
+# - dupmn ipadd|ipdel => allow IPv4 & keep them after reboot
+# - dupmn install <prof_name> -ip="IPv6" => listen=0 ??? or use a profile opt parameter instead ???
 # - dupmn any_command 3>&1 &>/dev/null => get a json instead (looot of work)
-# - dupmn ipadd/ipdel => allow IPv4 & keep them after reboot
-#
-# ip bind options:
-#   1. bind main & dupe
-#   2. bind dupe on unused port => need to check if actually can be activated
-#
-# coin profile opt parameter => FORCE_IP=IPv4/IPv6
-# autocreate => 2001:db8::any/64
 #
 
 
@@ -561,32 +555,35 @@ function cmd_iplist() {
 function cmd_ipmod() {
 	# <$1 = add|del> | <$2 = ip> | <$3 = netmask> | [$4 = interface]
 
-	if [[ $IP_TYPE == 4 ]]; then
-		# if netmask has ip structure => netmask_cidr
-		echo "IPv4 addresses are not yet supported"
-		return
-	fi
+	[[ $IP_TYPE == 4 ]] && echo -e "${RED}IPv4 addresses are not yet supported${NC}" && return # temporary measure until implementation
 
 	local netmask=$(netmask_cidr $3)
-	[[ ! $netmask ]] && echo -e "$3 hasn't a proper netmask structure" && exit
-	[[ ! $(is_number $netmask) || $netmask -lt 0 || $netmask -gt $([[ $IP_TYPE == 4 ]] && echo 32 || echo 128) ]] && echo -e "Netmask must be a value between 0 and $([[ $IP_TYPE == 4 ]] && echo 32 || echo 128)" && exit
-	[[ ! $(ls /sys/class/net | grep -v "lo" | grep "^$4$") ]] && echo -e "Interface \"$4\" doesn't exists, use ${YELLOW}dupmn iplist${NC} to see the existing interfaces" && exit
+	local iface=$([[ $4 ]] && echo $4 || ls /sys/class/net | grep -v "lo")
 
-	if [[ $IP_TYPE == 6 ]]; then
+	[[ ! $netmask ]] && echo -e "${RED}ERROR:${NC} ${GREEN}$3${NC} hasn't a proper netmask structure" && return
+	[[ ! $(is_number $netmask) || $netmask -lt 0 || $netmask -gt $([[ $IP_TYPE == 4 ]] && echo 32 || echo 128) ]] && echo -e "${RED}ERROR:${NC} Netmask must be a value between 0 and $([[ $IP_TYPE == 4 ]] && echo 32 || echo 128)" && return
+	[[ $4 && ! $(ls /sys/class/net | grep -v "lo" | grep "^$4$") ]] && echo -e "${RED}ERROR:${NC} Interface ${GREEN}$4${NC} doesn't exists, use ${YELLOW}dupmn iplist${NC} to see the existing interfaces" && return
+	[[ $(echo "$iface" | wc -l) -gt 1 ]] && echo -e "${RED}ERROR:${NC} There are 2 or more available interfaces, you'll have to specify it as an extra parameter, use ${YELLOW}dupmn iplist${NC} to see the existing interfaces" && return || echo -e "Using interface ${GREEN}$iface${NC}..."
 
-		if [[ $1 == "add" && $(conf_get_value /etc/sysctl.conf net.ipv6.conf.all.disable_ipv6) == "1" ]]; then
+	if [[ $IP_TYPE == 4 ]]; then
+		echo "IPv4 addresses are not yet supported"
+	elif [[ $IP_TYPE == 6 ]]; then
+
+		if [[ $(conf_get_value /etc/sysctl.conf net.ipv6.conf.all.disable_ipv6) == "1" ]]; then
 			echo -e "IPv6 addresses are currently disabled, applying a change on ${MAGENTA}/etc/sysctl.conf${NC} to enable them"
 			conf_set_value /etc/sysctl.conf net.ipv6.conf.all.disable_ipv6 0
 			sysctl -p
 		fi
-		if [[ $1 == "del" && ! $(get_ips 6 1 $4 | grep "$IP/$(($netmask))") ]]; then
-			echo -e "IP $2/$(($netmask)) doesn't exists in the interface $4" && exit
+		if [[ $(get_ips 6 1 $iface | grep "$IP/$(($netmask))") ]]; then
+			[[ $1 == "add" ]] && echo -e "${RED}ERROR:${NC} IP ${CYAN}$2${NC}/${YELLOW}$(($netmask))${NC} already exists in the interface ${GREEN}$iface${NC}" && return
+		else
+			[[ $1 == "del" ]] && echo -e "${RED}ERROR:${NC} IP ${CYAN}$2${NC}/${YELLOW}$(($netmask))${NC} doesn't exists in the interface ${GREEN}$iface${NC}" && return
 		fi
 
-		local ip_res=$(ip -6 addr $1 $2/$(($netmask)) dev $4 2>&1)
-		[[ ! $ip_res ]] && echo -e "IP $2 successfully added" || echo -e "ERROR: $ip_res"
+		local ip_res=$(ip -6 addr $1 $2/$(($netmask)) dev $iface 2>&1)
+		[[ ! $ip_res ]] && echo -e "IP ${CYAN}$2${NC}/${YELLOW}$(($netmask))${NC} successfully $([[ $1 == "add" ]] && echo "added" || echo "deleted")" || echo -e "${RED}ERROR:${NC} $ip_res"
 	fi
-	# echo_json message, ip, ip_type, netmask, iface
+	#echo_json message, ip, ip_type, netmask, iface
 }
 function cmd_bootstrap() {
 	# <$1 = destiny> | <$2 = origin> | [$3 = try_dupes]
@@ -841,7 +838,7 @@ function cmd_update() {
 			 \n  BTC Donations: ${YELLOW}3F6J19DmD5jowwwQbE9zxXoguGPVR716a7${NC}\
 			 \n==================================================="
 	dupmn_update=$(curl -s https://raw.githubusercontent.com/neo3587/dupmn/master/dupmn.sh)
-	if [[ -f /usr/bin/dupmn && ! $(diff -q <(cat <(echo "$dupmn_update")) <(cat /usr/bin/dupmn)) ]]; then
+	if [[ -f /usr/bin/dupmn && ! $(diff -q <(echo "$dupmn_update") /usr/bin/dupmn) ]]; then
 		echo -e "\n${GREEN}dupmn${NC} is already updated to the last version\n"
 	else
 		echo "$dupmn_update" > /usr/bin/dupmn
@@ -997,12 +994,12 @@ function main() {
 			cmd_iplist
 			;;
 		"ipadd")
-			exit_no_param "$4" "${YELLOW}dupmn ipadd <ip> <netmask> <iface>${NC} requires a IP, a netmask and a interface name"
+			exit_no_param "$3" "${YELLOW}dupmn ipadd <ip> <netmask> [interface]${NC} requires a IP, a netmask and a interface name (if there's more than 1)"
 			ip_parse "$2"
 			cmd_ipmod "add" "$2" "$3" "$4"
 			;;
 		"ipdel")
-			exit_no_param "$4" "${YELLOW}dupmn ipdel <ip> <netmask> <iface>${NC} requires a IP, a netmask and a interface name"
+			exit_no_param "$3" "${YELLOW}dupmn ipdel <ip> <netmask> [interface]${NC} requires a IP, a netmask and a interface name (if there's more than 1)"
 			ip_parse "$2"
 			cmd_ipmod "del" "$2" "$3" "$4"
 			;;
