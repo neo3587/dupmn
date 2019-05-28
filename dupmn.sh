@@ -4,6 +4,7 @@
 # Source: https://github.com/neo3587/dupmn
 
 # TODO:
+# - dupmn list [profile|param] => param: -online | -status | -ip | -rcport | -privkey
 # - dupmn ipadd|ipdel => allow IPv4 & keep them after reboot
 # - dupmn install <prof_name> -ip="IPv6" => listen=0 ??? or use a profile opt parameter instead ???
 # - dupmn any_command 3>&1 &>/dev/null => get a json instead (looot of work)
@@ -561,7 +562,7 @@ function cmd_iplist() {
 function cmd_ipmod() {
 	# <$1 = add|del> | <$2 = ip> | <$3 = netmask> | [$4 = interface]
 
-	[[ $IP_TYPE == 4 ]] && echo -e "${RED}IPv4 addresses are not yet supported${NC}" && return # temporary measure until implementation
+	[[ $IP_TYPE == 4 ]] && echo -e "${RED}IPv4 addresses are not yet supported${NC}" && return # temporary measure until implementation (check first IPv6 then apply IPv4)
 
 	echo -e "!!! this command stills in beta state !!!"
 
@@ -586,12 +587,30 @@ function cmd_ipmod() {
 
 	local ip_res=$(ip -$IP_TYPE addr $1 $2/$(($netmask)) dev $iface 2>&1)
 	if [[ ! $ip_res ]]; then
+		touch /etc/init.d/dupmn_ipmanage
+		local initd=$(cat /etc/init.d/dupmn_ipmanage | grep "^ip")
+		if [[ $1 == "add" ]]; then
+			initd+="\nip -$IP_TYPE addr add $IP/$(($netmask)) dev $iface"
+		else 
+			initd=$(echo "$initd" | grep -v "ip -$IP_TYPE addr add $IP/$(($netmask)) dev $iface")
+		fi
+		echo -e "#!/bin/sh -e\
+		\n### BEGIN INIT INFO\
+		\n# Provides:          dupmn_ipmanage\
+		\n# Required-Start:    \$remote_fs \$syslog\
+		\n# Required-Stop:     \$remote_fs \$syslog\
+		\n# Default-Start:     5\
+		\n# Default-Stop:\
+		\n# Short-Description: Start ips at boot time\
+		\n# Description:       dupmn script ip manager to keep ips enabled after reboot\
+		\n### END INIT INFO\
+		\n\
+		\n$initd\
+		\n\
+		\nexit 0" > /etc/init.d/dupmn_ipmanage
+		chmod +x /etc/init.d/dupmn_ipmanage
+		update-rc.d dupmn_ipmanage defaults
 		echo -e "IP ${CYAN}$2${NC}/${YELLOW}$(($netmask))${NC} successfully $([[ $1 == "add" ]] && echo "added" || echo "deleted")" 
-		# touch /etc/init.d/dupmn_ipmanage
-		# cat /etc/init.d/dupmn_ipmanage | grep "ip -$IP_TYPE addr add"
-		# add/delete value
-		# 'commented header' + modified str + 'exit 0' > /etc/init.d/dupmn_ipmanage
-		# chmod +x /etc/init.d/dupmn_ipmanage
 	else
 		echo -e "${RED}ERROR:${NC} $ip_res"
 	fi
@@ -731,7 +750,7 @@ function cmd_list() {
 			echo -e "(no profiles added)"
 		else
 			for var in "${!conf[@]}"; do
-				echo -e "$var : ${conf[$var]}"
+				echo -e "${CYAN}$var${NC} : ${conf[$var]}"
 			done
 			echo -e "Total count : $(echo ${conf[@]} | tr ' ' '\n' | cut -d '=' -f2 | awk '{ SUM += $1 } END { print SUM }') dupes + $(echo ${#conf[@]}) main nodes"
 		fi
