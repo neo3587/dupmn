@@ -5,16 +5,8 @@
 
 # TODO:
 # - dupmn list [profile|param] => param: -online | -status | -ip | -rcport | -privkey
-# - dupmn ipadd|ipdel => allow IPv4 & keep them after reboot
 # - dupmn install <prof_name> -ip="IPv6" => listen=0 ??? or use a profile opt parameter instead ???
 # - dupmn any_command 3>&1 &>/dev/null => get a json instead (looot of work)
-#
-# NOTE: Seems like IPv6 won't always keep after reboot, need to use the same method as IPv4:
-#	Options:
-#		- /etc/init.d/dupmn_ipmanage + sudo update-rc.d dupmn_ipmanage start => easy peasy, check execute order !!!
-#		- /etc/rc.local => ip -$ip_type addr add $ip/$netmask dev $iface   ### may be tricky if rc.local is already used for other purposes (put on first line ??)
-#		- /etc/network/interfaces => iface $iface inet|inet6 static\n address $ip\n netmask $netmask\n gateway $gateway 
-#       - /etc/network/interfaces => iface $iface inet|inet6 static\n address $ip/netmask  ### seems to work with IPv6, need to check with IPv4
 #
 
 
@@ -309,7 +301,7 @@ function netmask_cidr() {
         done
         echo $nbits
     elif [[ $(is_number $1) ]]; then
-		echo $1
+		echo $1 | sed 's/^0*//'
 	fi
 }
 
@@ -562,37 +554,33 @@ function cmd_iplist() {
 function cmd_ipmod() {
 	# <$1 = add|del> | <$2 = ip> | <$3 = netmask> | [$4 = interface]
 
-	[[ $IP_TYPE == 4 ]] && echo -e "${RED}IPv4 addresses are not yet supported${NC}" && return # temporary measure until implementation (check first IPv6 then apply IPv4)
-
-	echo -e "!!! this command stills in beta state !!!"
-
 	local netmask=$(netmask_cidr $3)
 	local iface=$([[ $4 ]] && echo $4 || ls /sys/class/net | grep -v "lo")
 
 	[[ ! $netmask ]] && echo -e "${RED}ERROR:${NC} ${GREEN}$3${NC} hasn't a proper netmask structure" && return
-	[[ ! $(is_number $netmask) || $netmask -lt 0 || $netmask -gt $([[ $IP_TYPE == 4 ]] && echo 32 || echo 128) ]] && echo -e "${RED}ERROR:${NC} Netmask must be a value between 0 and $([[ $IP_TYPE == 4 ]] && echo 32 || echo 128)" && return
+	[[ $netmask -lt 0 || $netmask -gt $([[ $IP_TYPE == 4 ]] && echo 32 || echo 128) ]] && echo -e "${RED}ERROR:${NC} Netmask must be a value between 0 and $([[ $IP_TYPE == 4 ]] && echo 32 || echo 128)" && return
 	[[ $4 && ! $(ls /sys/class/net | grep -v "lo" | grep "^$4$") ]] && echo -e "${RED}ERROR:${NC} Interface ${GREEN}$4${NC} doesn't exists, use ${YELLOW}dupmn iplist${NC} to see the existing interfaces" && return
-	[[ $(echo "$iface" | wc -l) -gt 1 ]] && echo -e "${RED}ERROR:${NC} There are 2 or more available interfaces, you'll have to specify it as an extra parameter, use ${YELLOW}dupmn iplist${NC} to see the existing interfaces" && return || echo -e "Using interface ${GREEN}$iface${NC}..."
+	[[ $(echo "$iface" | wc -l) -gt 1 ]] && echo -e "${RED}ERROR:${NC} There are 2 or more available interfaces, you'll have to specify it as an extra parameter, use ${YELLOW}dupmn iplist${NC} to see the existing interfaces" && return
 
 	if [[ $IP_TYPE == 6 && $(conf_get_value /etc/sysctl.conf net.ipv6.conf.all.disable_ipv6) == "1" ]]; then
 		echo -e "IPv6 addresses are currently disabled, applying a change on ${MAGENTA}/etc/sysctl.conf${NC} to enable them"
 		conf_set_value /etc/sysctl.conf net.ipv6.conf.all.disable_ipv6 0
 		sysctl -p
 	fi
-	if [[ $(get_ips $IP_TYPE 1 $iface | grep "$IP/$(($netmask))") ]]; then
-		[[ $1 == "add" ]] && echo -e "${RED}ERROR:${NC} IP ${CYAN}$2${NC}/${YELLOW}$(($netmask))${NC} already exists in the interface ${GREEN}$iface${NC}" && return
+	if [[ $(get_ips $IP_TYPE 1 $iface | grep "$IP/$netmask") ]]; then
+		[[ $1 == "add" ]] && echo -e "${RED}ERROR:${NC} IP ${CYAN}$2${NC}/${YELLOW}$netmask${NC} already exists in the interface ${GREEN}$iface${NC}" && return
 	else
-		[[ $1 == "del" ]] && echo -e "${RED}ERROR:${NC} IP ${CYAN}$2${NC}/${YELLOW}$(($netmask))${NC} doesn't exists in the interface ${GREEN}$iface${NC}" && return
+		[[ $1 == "del" ]] && echo -e "${RED}ERROR:${NC} IP ${CYAN}$2${NC}/${YELLOW}$netmask${NC} doesn't exists in the interface ${GREEN}$iface${NC}" && return
 	fi
 
-	local ip_res=$(ip -$IP_TYPE addr $1 $2/$(($netmask)) dev $iface 2>&1)
+	local ip_res=$(ip -$IP_TYPE addr $1 $2/$netmask dev $iface 2>&1)
 	if [[ ! $ip_res ]]; then
 		touch /etc/init.d/dupmn_ipmanage
 		local initd=$(cat /etc/init.d/dupmn_ipmanage | grep "^ip")
 		if [[ $1 == "add" ]]; then
-			initd+="\nip -$IP_TYPE addr add $IP/$(($netmask)) dev $iface"
+			initd+="\nip -$IP_TYPE addr add $IP/$netmask dev $iface"
 		else 
-			initd=$(echo "$initd" | grep -v "ip -$IP_TYPE addr add $IP/$(($netmask)) dev $iface")
+			initd=$(echo "$initd" | grep -v "ip -$IP_TYPE addr add $IP/$netmask dev $iface")
 		fi
 		echo -e "#!/bin/sh -e\
 		\n### BEGIN INIT INFO\
@@ -610,9 +598,9 @@ function cmd_ipmod() {
 		\nexit 0" > /etc/init.d/dupmn_ipmanage
 		chmod +x /etc/init.d/dupmn_ipmanage
 		update-rc.d dupmn_ipmanage defaults
-		echo -e "IP ${CYAN}$2${NC}/${YELLOW}$(($netmask))${NC} successfully $([[ $1 == "add" ]] && echo "added" || echo "deleted")" 
+		echo -e "IP ${CYAN}$2${NC}/${YELLOW}$netmask${NC} successfully $([[ $1 == "add" ]] && echo "added" || echo "deleted")" 
 	else
-		echo -e "${RED}ERROR:${NC} $ip_res"
+		echo -e "${RED}UNEXPECTED ERROR:${NC} $ip_res"
 	fi
 	#echo_json message, ip, ip_type, netmask, iface
 }
