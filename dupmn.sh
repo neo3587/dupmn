@@ -77,7 +77,7 @@ function load_profile() {
 	COIN_CONFIG="${prof[COIN_CONFIG]}"
 	RPC_PORT="${prof[RPC_PORT]}"
 	COIN_SERVICE="${prof[COIN_SERVICE]}"
-	DUP_COUNT=$((${conf[$1]}))
+	DUP_COUNT=$(stoi ${conf[$1]})
 	EXEC_COIN_DAEMON="${prof[COIN_PATH]}$COIN_DAEMON"
 	EXEC_COIN_CLI="${prof[COIN_PATH]}$COIN_CLI"
 
@@ -229,7 +229,7 @@ function install_proc() {
 
 	if [[ ! $NEW_RPC ]]; then
 		NEW_RPC=$([[ $RPC_PORT ]] && echo $RPC_PORT || conf_get_value $COIN_FOLDER/$COIN_CONFIG "rpcport")
-		NEW_RPC=$(find_port $(($([[ $NEW_RPC ]] && echo $NEW_RPC || echo "1023")+1)))
+		NEW_RPC=$(find_port $(($([[ $NEW_RPC ]] && stoi $NEW_RPC || echo 1023)+1)))
 	fi
 
 	mkdir $new_folder > /dev/null 2>&1
@@ -284,6 +284,9 @@ function make_chmod_file() {
 	echo -e "$2" > $1
 	chmod +x $1
 }
+function stoi() {
+	echo $1 | sed 's/^0*//'
+}
 function get_ips() {
 	# <$1 = 4 or 6> | [$2 = netmask] | [$3 = interface]
 	local get_ip=$(ip -$1 addr show $3 | grep "scope global" | awk '{print $2}')
@@ -301,7 +304,7 @@ function netmask_cidr() {
         done
         echo $nbits
     elif [[ $(is_number $1) ]]; then
-		echo $1 | sed 's/^0*//'
+		stoi $1
 	fi
 }
 
@@ -389,7 +392,8 @@ function cmd_profadd() {
 function cmd_profdel() {
 	# <$1 = profile_name>
 
-	if [ $DUP_COUNT -gt 0 ]; then
+	local deleted_dupes=$DUP_COUNT
+	if [[ $DUP_COUNT -gt 0 ]]; then
 		if [[ -t 1 ]]; then
 			read -r -p "All the dupes created with this profile will be deleted, are you sure to apply this command? [Y/n]`echo $'\n> '`" yesno
 			[[ ! $yesno =~ ^[Yy]$|^[Yy][Ee][Ss]$ ]] && echo -e "Profile deletion cancelled" && return
@@ -405,7 +409,7 @@ function cmd_profdel() {
 	rm -rf /usr/bin/$COIN_CLI-all
 	rm -rf .dupmn/$1
 
-	echo_json "{\"message\":\"profile successfully deleted\"}" # add deleted MNs count
+	echo_json "{\"message\":\"profile successfully deleted\",\"count\":$deleted_dupes}"
 }
 function cmd_install() {
 	# <$1 = profile_name> | <$2 = instance_number>
@@ -497,12 +501,7 @@ function cmd_reinstall() {
 function cmd_uninstall() {
 	# <$1 = profile_name> | <$2 = instance_number/all>
 
-	if [ $DUP_COUNT == 0 ]; then
-		echo -e "There aren't duplicated ${BLUE}$1${NC} masternodes to remove"
-		exit
-	fi
-
-	if [ "$2" == "all" ]; then
+	if [ $2 == "all" ]; then
 		for (( i=$DUP_COUNT; i>=1; i-- )); do
 			echo -e "Uninstalling ${BLUE}$1${NC} instance ${CYAN}number $i${NC}"
 			rm -rf /usr/bin/$COIN_CLI-$i
@@ -539,70 +538,6 @@ function cmd_uninstall() {
 		rm -rf /etc/systemd/system/$COIN_NAME-$DUP_COUNT.service
 		systemctl daemon-reload
 	fi
-}
-function cmd_iplist() {
-	for iface in $(ls /sys/class/net | grep -v "lo"); do
-		echo -e "Interface ${GREEN}$iface${NC}:"
-		for ip in $(get_ips 4 1 $iface); do
-			echo -e "  ${YELLOW}$ip${NC}"
-		done
-		for ip in $(get_ips 6 1 $iface); do
-			echo -e "  ${CYAN}$ip${NC}"
-		done
-	done
-}
-function cmd_ipmod() {
-	# <$1 = add|del> | <$2 = ip> | <$3 = netmask> | [$4 = interface]
-
-	local netmask=$(netmask_cidr $3)
-	local iface=$([[ $4 ]] && echo $4 || ls /sys/class/net | grep -v "lo")
-
-	[[ ! $netmask ]] && echo -e "${RED}ERROR:${NC} ${GREEN}$3${NC} hasn't a proper netmask structure" && return
-	[[ $netmask -lt 0 || $netmask -gt $([[ $IP_TYPE == 4 ]] && echo 32 || echo 128) ]] && echo -e "${RED}ERROR:${NC} Netmask must be a value between 0 and $([[ $IP_TYPE == 4 ]] && echo 32 || echo 128)" && return
-	[[ $4 && ! $(ls /sys/class/net | grep -v "lo" | grep "^$4$") ]] && echo -e "${RED}ERROR:${NC} Interface ${GREEN}$4${NC} doesn't exists, use ${YELLOW}dupmn iplist${NC} to see the existing interfaces" && return
-	[[ $(echo "$iface" | wc -l) -gt 1 ]] && echo -e "${RED}ERROR:${NC} There are 2 or more available interfaces, you'll have to specify it as an extra parameter, use ${YELLOW}dupmn iplist${NC} to see the existing interfaces" && return
-
-	if [[ $IP_TYPE == 6 && $(conf_get_value /etc/sysctl.conf net.ipv6.conf.all.disable_ipv6) == "1" ]]; then
-		echo -e "IPv6 addresses are currently disabled, applying a change on ${MAGENTA}/etc/sysctl.conf${NC} to enable them"
-		conf_set_value /etc/sysctl.conf net.ipv6.conf.all.disable_ipv6 0
-		sysctl -p
-	fi
-	if [[ $(get_ips $IP_TYPE 1 $iface | grep "$IP/$netmask") ]]; then
-		[[ $1 == "add" ]] && echo -e "${RED}ERROR:${NC} IP ${CYAN}$2${NC}/${YELLOW}$netmask${NC} already exists in the interface ${GREEN}$iface${NC}" && return
-	else
-		[[ $1 == "del" ]] && echo -e "${RED}ERROR:${NC} IP ${CYAN}$2${NC}/${YELLOW}$netmask${NC} doesn't exists in the interface ${GREEN}$iface${NC}" && return
-	fi
-
-	local ip_res=$(ip -$IP_TYPE addr $1 $2/$netmask dev $iface 2>&1)
-	if [[ ! $ip_res ]]; then
-		touch /etc/init.d/dupmn_ipmanage
-		local initd=$(cat /etc/init.d/dupmn_ipmanage | grep "^ip")
-		if [[ $1 == "add" ]]; then
-			initd+="\nip -$IP_TYPE addr add $IP/$netmask dev $iface"
-		else 
-			initd=$(echo "$initd" | grep -v "ip -$IP_TYPE addr add $IP/$netmask dev $iface")
-		fi
-		echo -e "#!/bin/sh -e\
-		\n### BEGIN INIT INFO\
-		\n# Provides:          dupmn_ipmanage\
-		\n# Required-Start:    \$remote_fs \$syslog\
-		\n# Required-Stop:     \$remote_fs \$syslog\
-		\n# Default-Start:     5\
-		\n# Default-Stop:\
-		\n# Short-Description: Start ips at boot time\
-		\n# Description:       dupmn script ip manager to keep ips enabled after reboot\
-		\n### END INIT INFO\
-		\n\
-		\n$initd\
-		\n\
-		\nexit 0" > /etc/init.d/dupmn_ipmanage
-		chmod +x /etc/init.d/dupmn_ipmanage
-		update-rc.d dupmn_ipmanage defaults
-		echo -e "IP ${CYAN}$2${NC}/${YELLOW}$netmask${NC} successfully $([[ $1 == "add" ]] && echo "added" || echo "deleted")" 
-	else
-		echo -e "${RED}UNEXPECTED ERROR:${NC} $ip_res"
-	fi
-	#echo_json message, ip, ip_type, netmask, iface
 }
 function cmd_bootstrap() {
 	# <$1 = destiny> | <$2 = origin> | [$3 = try_dupes]
@@ -645,9 +580,9 @@ function cmd_bootstrap() {
 		local service_1=$([[ $1 -gt 0 ]] && echo "$COIN_NAME-$1.service" || echo "$COIN_SERVICE")
 		local service_2=$([[ $2 -gt 0 ]] && echo "$COIN_NAME-$2.service" || echo "$COIN_SERVICE")
 
-		if [[ $1 == $2 ]]; then
+		if [[ $1 -eq $2 ]]; then
 			echo "You cannot use the same node for the chain copy... that doesn't makes sense"
-		elif [[ ("$1" == "0" || "$2" == "0") && $(wallet_loaded) && (! $COIN_SERVICE || ! -f /etc/systemd/system/$COIN_SERVICE) ]]; then 
+		elif [[ ($1 -eq 0 || $2 -eq 0) && $(wallet_loaded) && (! $COIN_SERVICE || ! -f /etc/systemd/system/$COIN_SERVICE) ]]; then 
 			main_mn_try_bootstrap $1 $2 $3
 		elif [[ ! $(wallet_loaded $2) ]]; then 
 			copy_chain $2 $1
@@ -661,7 +596,7 @@ function cmd_bootstrap() {
 		fi
 	}
 
-	if [[ "$1" == "all" ]]; then
+	if [[ $1 == "all" ]]; then
 		local origin_service=$([[ $2 -gt 0 ]] && echo "$COIN_NAME-$2.service" || echo "$COIN_SERVICE")
 		local origin_loaded=$(wallet_loaded $2)
 		if [[ $origin_loaded ]]; then
@@ -681,10 +616,92 @@ function cmd_bootstrap() {
 		bootstrap_proc $1 $2 $3
 	fi
 }
+function cmd_iplist() {
+	for iface in $(ls /sys/class/net | grep -v "lo"); do
+		echo -e "Interface ${GREEN}$iface${NC}:"
+		for ip in $(get_ips 4 1 $iface); do
+			echo -e "  ${YELLOW}$ip${NC}"
+		done
+		for ip in $(get_ips 6 1 $iface); do
+			echo -e "  ${CYAN}$ip${NC}"
+		done
+	done
+}
+function cmd_ipmod() {
+	# <$1 = add|del> | <$2 = ip> | <$3 = netmask> | [$4 = interface]
+
+	local netmask=$(netmask_cidr $3)
+	local iface=$([[ $4 ]] && echo $4 || ls /sys/class/net | grep -v "lo")
+
+	if [[ ! $netmask ]]; then
+		echo -e "${RED}ERROR:${NC} ${GREEN}$3${NC} hasn't a proper netmask structure"
+		# 17
+		return
+	elif [[ $netmask -lt 0 || $netmask -gt $([[ $IP_TYPE == 4 ]] && echo 32 || echo 128) ]]; then
+		echo -e "${RED}ERROR:${NC} Netmask must be a value between 0 and $([[ $IP_TYPE == 4 ]] && echo 32 || echo 128)"
+		# 18
+		return
+	elif [[ $4 && ! $(ls /sys/class/net | grep -v "lo" | grep "^$4$") ]]; then
+		echo -e "${RED}ERROR:${NC} Interface ${GREEN}$4${NC} doesn't exists, use ${YELLOW}dupmn iplist${NC} to see the existing interfaces"
+		# 19
+		return
+	elif [[ $(echo "$iface" | wc -l) -gt 1 ]]; then
+		echo -e "${RED}ERROR:${NC} There are 2 or more available interfaces, you'll have to specify it as an extra parameter, use ${YELLOW}dupmn iplist${NC} to see the existing interfaces"
+		# 20
+		return
+	fi
+
+	if [[ $IP_TYPE == 6 && $(conf_get_value /etc/sysctl.conf net.ipv6.conf.all.disable_ipv6) == "1" ]]; then
+		echo -e "IPv6 addresses are currently disabled, applying a change on ${MAGENTA}/etc/sysctl.conf${NC} to enable them"
+		conf_set_value /etc/sysctl.conf net.ipv6.conf.all.disable_ipv6 0
+		sysctl -p
+	fi
+	if [[ $1 == "add" && $(get_ips $IP_TYPE 0 $iface | grep "^$IP$") ]]; then
+		echo -e "${RED}ERROR:${NC} IP ${CYAN}$2${NC} already exists in the interface ${GREEN}$iface${NC}"
+		# 21
+		return
+	elif [[ $1 == "del" && ! $(get_ips $IP_TYPE 0 $iface | grep "^$IP$") ]]; then
+		echo -e "${RED}ERROR:${NC} IP ${CYAN}$2${NC} doesn't exists in the interface ${GREEN}$iface${NC}"
+		# 22
+		return
+	fi
+
+	local ip_res=$(ip -$IP_TYPE addr $1 $2/$netmask dev $iface 2>&1)
+	if [[ ! $ip_res ]]; then
+		touch /etc/init.d/dupmn_ipmanage
+		local initd=$(cat /etc/init.d/dupmn_ipmanage | grep "^ip")
+		if [[ $1 == "add" ]]; then
+			initd+="\nip -$IP_TYPE addr add $IP/$netmask dev $iface"
+		else 
+			initd=$(echo "$initd" | grep -v "ip -$IP_TYPE addr add $IP/$netmask dev $iface")
+		fi
+		echo -e "#!/bin/sh -e\
+		\n### BEGIN INIT INFO\
+		\n# Provides:          dupmn_ipmanage\
+		\n# Required-Start:    \$remote_fs \$syslog\
+		\n# Required-Stop:     \$remote_fs \$syslog\
+		\n# Default-Start:     5\
+		\n# Default-Stop:\
+		\n# Short-Description: Start ips at boot time\
+		\n# Description:       dupmn script ip manager to keep ips enabled after reboot\
+		\n### END INIT INFO\
+		\n\
+		\n$initd\
+		\n\
+		\nexit 0" > /etc/init.d/dupmn_ipmanage
+		chmod +x /etc/init.d/dupmn_ipmanage
+		update-rc.d dupmn_ipmanage defaults
+		echo -e "IP ${CYAN}$2${NC}/${YELLOW}$netmask${NC} successfully $([[ $1 == "add" ]] && echo "added" || echo "deleted")" 
+	else
+		echo -e "${RED}UNEXPECTED ERROR:${NC} $ip_res"
+		# 23
+	fi
+	#echo_json message, ip, ip_type, netmask, iface
+}
 function cmd_rpcchange() {
 	# <$1 = profile_name> | <$2 = instance_number> | [$3 = port_number]
 
-	local new_port=$(($(conf_get_value $COIN_FOLDER$2/$COIN_CONFIG "rpcport")))
+	local new_port=$(stoi $(conf_get_value $COIN_FOLDER$2/$COIN_CONFIG "rpcport"))
 
 	if [[ ! $3 ]]; then
 		echo -e "No port provided, the port will be changed for any other free port..."
@@ -692,7 +709,7 @@ function cmd_rpcchange() {
 	elif [[ ! $(is_number $3) ]]; then
 		echo -e "${YELLOW}dupmn rpcchange <prof_name> <number> [port]${NC}, [port] must be a number"
 		exit
-	elif [[ $(($3)) -lt 1024 || $(($3)) -gt 49151 ]]; then
+	elif [[ $3 -lt 1024 || $3 -gt 49151 ]]; then
 		echo -e "${MAGENTA}$3${NC} is not a valid or a reserved port (must be between ${MAGENTA}1024${NC} and ${MAGENTA}49151${NC})"
 		exit
 	else
@@ -971,76 +988,72 @@ function main() {
 
 	case "$1" in
 		"profadd")
-			exit_no_param "$2" "${YELLOW}dupmn profadd <prof_file> [prof_name]${NC} requires a profile file and optionally a new profile name as parameters"
+			exit_no_param $2 "${YELLOW}dupmn profadd <prof_file> [prof_name]${NC} requires a profile file and optionally a new profile name as parameters"
 			cd $curr_dir
-			cmd_profadd "$2" "$3"
+			cmd_profadd $2 $3
 			;;
 		"profdel")
-			exit_no_param "$2" "${YELLOW}dupmn profadd <prof_name>${NC} requires a profile name as parameter"
-			load_profile "$2"
-			cmd_profdel "$2"
+			exit_no_param $2 "${YELLOW}dupmn profadd <prof_name>${NC} requires a profile name as parameter"
+			load_profile $2
+			cmd_profdel $2
 			;;
 		"install")
-			exit_no_param "$2" "${YELLOW}dupmn install <coin_name> [opt_params]${NC} requires a profile name of an added profile as a parameter"
-			load_profile "$2" "1"
+			exit_no_param $2 "${YELLOW}dupmn install <coin_name> [opt_params]${NC} requires a profile name of an added profile as a parameter"
+			load_profile $2 "1"
 			opt_install_params "${@:3}"
-			cmd_install "$2" $(($DUP_COUNT+1))
+			cmd_install $2 $(($DUP_COUNT+1))
 			;;
 		"reinstall")
-			exit_no_param "$3" "${YELLOW}dupmn reinstall <coin_name> <number> [opt_params]${NC} requires a profile name and a instance as parameters"
-			load_profile "$2" "1"
-			instance_valid "$3"
+			exit_no_param $3 "${YELLOW}dupmn reinstall <coin_name> <number> [opt_params]${NC} requires a profile name and a instance as parameters"
+			load_profile $2 "1"
+			instance_valid $3
 			opt_install_params "${@:4}"
-			cmd_reinstall "$2" $(($3))
+			cmd_reinstall $2 $(stoi $3)
 			;;
 		"uninstall")
-			exit_no_param "$3" "${YELLOW}dupmn uninstall <coin_name> <number|all>${NC} requires a profile name and a number (or all) as parameters"
-			load_profile "$2"
-			if [[ "$3" != "all" ]]; then
-				instance_valid "$3"
-				cmd_uninstall "$2" $(($3))
-			else
-				cmd_uninstall "$2" "$3"
-			fi
+			exit_no_param $3 "${YELLOW}dupmn uninstall <coin_name> <number|all>${NC} requires a profile name and a number (or all) as parameters"
+			load_profile $2
+			[[ $3 != "all" ]] && instance_valid $3
+			cmd_uninstall $2 $([[ $3 == "all" ]] && echo "all" || echo $(stoi $3))
 			;;
 		"bootstrap")
-			exit_no_param "$3" "${YELLOW}dupmn bootstrap <prof_name> <number|all> [number]${NC} requires a profile name and a number as parameters"
-			load_profile "$2" "1"
-			[[ "$3" != "all" ]] && instance_valid "$3" "1"
-			[[ $4 ]] && instance_valid "$4" "1"
-			cmd_bootstrap $([[ "$3" == "all" ]] && echo $3 || echo $(($3))) $(($4)) $([[ ! $4 ]] && echo "1")
+			exit_no_param $3 "${YELLOW}dupmn bootstrap <prof_name> <number|all> [number]${NC} requires a profile name and a number as parameters"
+			load_profile $2 "1"
+			[[ $3 != "all" ]] && instance_valid $3 "1"
+			[[ $4 ]] && instance_valid $4 "1"
+			cmd_bootstrap $([[ $3 == "all" ]] && echo "all" || echo $(stoi $3)) $(stoi $4) $([[ ! $4 ]] && echo "1")
 			;;
 		"iplist")
 			cmd_iplist
 			;;
 		"ipadd")
-			exit_no_param "$3" "${YELLOW}dupmn ipadd <ip> <netmask> [interface]${NC} requires a IP, a netmask and a interface name (if there's more than 1)"
-			ip_parse "$2"
-			cmd_ipmod "add" "$2" "$3" "$4"
+			exit_no_param $3 "${YELLOW}dupmn ipadd <ip> <netmask> [interface]${NC} requires a IP, a netmask and a interface name (if there's more than 1)"
+			ip_parse $2
+			cmd_ipmod "add" $2 $3 $4
 			;;
 		"ipdel")
-			exit_no_param "$3" "${YELLOW}dupmn ipdel <ip> <netmask> [interface]${NC} requires a IP, a netmask and a interface name (if there's more than 1)"
-			ip_parse "$2"
-			cmd_ipmod "del" "$2" "$3" "$4"
+			exit_no_param $3 "${YELLOW}dupmn ipdel <ip> <netmask> [interface]${NC} requires a IP, a netmask and a interface name (if there's more than 1)"
+			ip_parse $2
+			cmd_ipmod "del" $2 $3 $4
 			;;
 		"rpcchange")
-			exit_no_param "$3" "${YELLOW}dupmn rpcchange <prof_name> <number> [port]${NC} requires a profile name, instance number and optionally a port number as parameters"
-			load_profile "$2" "1"
-			instance_valid "$3"
-			cmd_rpcchange "$2" $(($3)) "$4"
+			exit_no_param $3 "${YELLOW}dupmn rpcchange <prof_name> <number> [port]${NC} requires a profile name, instance number and optionally a port number as parameters"
+			load_profile $2 "1"
+			instance_valid $3
+			cmd_rpcchange $2 $(stoi $3) $4
 			;;
 		"systemctlall")
-			exit_no_param "$3" "${YELLOW}dupmn systemctlall <prof_name> <command>${NC} requires a profile name and a command as parameters"
-			load_profile "$2"
-			cmd_systemctlall "$2" "$3"
+			exit_no_param $3 "${YELLOW}dupmn systemctlall <prof_name> <command>${NC} requires a profile name and a command as parameters"
+			load_profile $2
+			cmd_systemctlall $2 $3
 			;;
 		"list")
-			[[ $2 ]] && load_profile "$2" "1"
+			[[ $2 ]] && load_profile $2 "1"
 			cmd_list $2
 			;;
 		"swapfile")
-			exit_no_param "$2" "${YELLOW}dupmn swapfile <size_in_mbytes>${NC} requires a number as parameter"
-			cmd_swapfile "$2"
+			exit_no_param $2 "${YELLOW}dupmn swapfile <size_in_mbytes>${NC} requires a number as parameter"
+			cmd_swapfile $2
 			;;
 		"checkmem")
 			cmd_checkmem
