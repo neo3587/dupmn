@@ -285,7 +285,7 @@ function make_chmod_file() {
 	chmod +x $1
 }
 function stoi() {
-	echo $1 | sed 's/^0*//'
+	echo $1 | awk '{ printf "%d\n", $0 }'
 }
 function get_ips() {
 	# <$1 = 4 or 6> | [$2 = netmask] | [$3 = interface]
