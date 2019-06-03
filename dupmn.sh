@@ -5,8 +5,27 @@
 
 # TODO:
 # - dupmn list [profile|param] => param: -online | -status | -ip | -rcport | -privkey
-# - dupmn install <prof_name> -ip="IPv6" => listen=0 ??? or use a profile opt parameter instead ???
 # - dupmn any_command 3>&1 &>/dev/null => get a json instead (looot of work)
+#    + general      [1-3] (X)
+#    + load_profile [4-8] (X)
+#    + select_dupe  [9-11] (X)
+#    + using_ip     [12] (X)
+#    + profadd      [13-16] (X)
+#    + profdel      [load_profile] (X)
+#    + install      [load_profile + using_ip + 17] (X)
+#    + reinstall    [install] (X)
+#    + uninstall    [load_profile + select_dupe] ( )
+#    + bootstrap    [load_profile + select_dupe + 18-19] ( )
+#    + iplist       [none] ( )
+#    + ipadd        [using_ip + ??] ( )
+#    + ipdel        [using_ip + ??] ( )
+#    + rpcchange    [load_profile + select_dupe + ??] ( )
+#    + systemctlall [load_profile + ??] ( )
+#    + list         [none] ( )
+#    + list [param] [load_profile] ( )
+#    + swapfile     [??] ( )
+#    + help         [none] ( )
+#    + update       [none] ( )
 #
 
 
@@ -36,6 +55,7 @@ IP_TYPE=""
 NEW_RPC=""
 NEW_KEY=""
 INSTALL_BOOTSTRAP=""
+FORCE_LISTEN=""
 
 
 function echo_json() {
@@ -80,6 +100,7 @@ function load_profile() {
 	DUP_COUNT=$(stoi ${conf[$1]})
 	EXEC_COIN_DAEMON="${prof[COIN_PATH]}$COIN_DAEMON"
 	EXEC_COIN_CLI="${prof[COIN_PATH]}$COIN_CLI"
+	FORCE_LISTEN="${prof[FORCE_LISTEN]}"
 
 	if [[ "$2" == "1" ]]; then
 		if [[ ! -f "$EXEC_COIN_DAEMON" ]]; then
@@ -162,7 +183,7 @@ function configure_systemd() {
 	chmod +x /etc/systemd/system/$service_name.service
 
 	systemctl daemon-reload
-	[[ $INSTALL_BOOTSTRAP ]] && cmd_bootstrap $1 0 1
+	[[ $INSTALL_BOOTSTRAP ]] && cmd_bootstrap $1 0 1 3>/dev/null
 	[[ $1 ]] && systemctl start $service_name.service
 	systemctl enable $service_name.service > /dev/null 2>&1
 
@@ -375,11 +396,11 @@ function cmd_profadd() {
 			fi
 			conf_set_value .dupmn/$prof_name "COIN_SERVICE" "\"${prof[COIN_NAME]}.service\"" "1"
 			retcode=1
-		elif [[ $(load_profile "$prof_name" "1") ]]; then
+		elif [[ $(load_profile "$prof_name" "1" 3>/dev/null) ]]; then
 			echo -e "${RED}ERROR:${NC} Can't find the binaries of the main node to make the service, make sure that you have installed the masternode and retry this command to create a service"
 			retcode=2
 		else
-			load_profile "$prof_name" "1"
+			load_profile "$prof_name" "1" 3>/dev/null
 			configure_systemd
 			conf_set_value .dupmn/$prof_name "COIN_SERVICE" "\"${prof[COIN_NAME]}.service\"" "1"
 			echo -e "Service for ${BLUE}$prof_name${NC} main node created"
@@ -398,7 +419,7 @@ function cmd_profdel() {
 			read -r -p "All the dupes created with this profile will be deleted, are you sure to apply this command? [Y/n]`echo $'\n> '`" yesno
 			[[ ! $yesno =~ ^[Yy]$|^[Yy][Ee][Ss]$ ]] && echo -e "Profile deletion cancelled" && return
 		fi
-		cmd_uninstall $1 all #3> /dev/null
+		cmd_uninstall $1 all 3>/dev/null
 	fi
 	sed -i "/$1\=/d" .dupmn/dupmn.conf
 	sed -i "/^$/d"   .dupmn/dupmn.conf
@@ -414,6 +435,12 @@ function cmd_profdel() {
 function cmd_install() {
 	# <$1 = profile_name> | <$2 = instance_number>
 
+	if [[ $FORCE_LISTEN == "1" && ! $IP ]]; then
+		echo -e "${RED}ERROR:${NC} A profile with ${MAGENTA}FORCE_LISTEN=1${NC} requires a IP with -ip=IP extra parameter when installing a dupe"
+		echo_json "{\"error\":\"A profile with FORCE_LISTEN=1 requires a IP when installing a dupe\",\"errcode\":17}" 
+		return
+	fi
+
 	install_proc $1 $2
 
 	local mn_port=$(conf_get_value $new_folder/$COIN_CONFIG "port")
@@ -422,23 +449,25 @@ function cmd_install() {
 
 	if [[ $IP ]]; then 
 
-		# IP repeated check:
-		# local netstat_list=$(netstat -tulpn) 
-		# ipv4 => grep tcp + list ip 0.0.0.0 || grep ipv6 => tcp6 + list ip ::
-		# foreach ipv4 or ipv6 => warn if ip:port exists
-
-		$(conf_set_value $new_folder/$COIN_CONFIG "listen"         "1"          1)
 		$(conf_set_value $new_folder/$COIN_CONFIG "externalip"     $IP:$mn_port 0)
 		$(conf_set_value $new_folder/$COIN_CONFIG "masternodeaddr" $IP:$mn_port 0)
-		$(conf_set_value $new_folder/$COIN_CONFIG "bind"           $IP          1)
 
-		if [[ ! $(conf_get_value $COIN_FOLDER/$COIN_CONFIG "bind") ]]; then
-			echo -e "Adding the ${CYAN}bind${NC} parameter to the main node conf file, this only will be applied this time..."
-			local main_ip=$(conf_get_value $new_folder/$COIN_CONFIG "masternodeaddr")
-			$(conf_set_value $COIN_FOLDER/$COIN_CONFIG "bind" $([[ ! $main_ip ]] && echo $(conf_get_value $COIN_FOLDER/$COIN_CONFIG "externalip") || echo "$main_ip") 1)
-			if [[ $($EXEC_COIN_CLI stop 2> /dev/null) ]]; then
-				sleep 5
-				$EXEC_COIN_DAEMON -daemon > /dev/null 2>&1
+		if [[ $FORCE_LISTEN == "1" ]]; then
+			
+			$(conf_set_value $new_folder/$COIN_CONFIG "bind"   $IP 1)
+			$(conf_set_value $new_folder/$COIN_CONFIG "listen" "1" 1)
+
+			if [[ ! $(conf_get_value $COIN_FOLDER/$COIN_CONFIG "bind") ]]; then
+				echo -e "Adding the ${CYAN}bind${NC} parameter to the main node conf file, this only will be applied this time..."
+				local main_ip=$(echo $(conf_get_value $COIN_FOLDER/$COIN_CONFIG "masternodeaddr") | rev)
+				main_ip=$([[ $main_ip ]] && echo "$main_ip" || echo $(conf_get_value $COIN_FOLDER/$COIN_CONFIG "externalip") | rev)
+				main_ip=$(echo $([[ $main_ip =~ ^[0-9]{1,}\:. ]] && echo $main_ip | cut -d ':' -f2- || echo $main_ip) | rev)
+				$(conf_set_value $COIN_FOLDER/$COIN_CONFIG "bind" $main_ip 1)
+				if [[ $($EXEC_COIN_CLI stop 2> /dev/null) ]]; then
+					sleep 5
+					$EXEC_COIN_DAEMON -daemon > /dev/null 2>&1
+					wallet_loaded 0 20 > /dev/null
+				fi
 			fi
 		fi
 	fi
@@ -480,10 +509,16 @@ function cmd_install() {
 		fi
 	fi
 
-	echo_json "{\"message\":\"profile successfully installed\",\"ip\":\"$([[ $show_ip ]] && echo $show_ip || echo undefined)\",\"port\":\"$mn_port\",\"rpc\":\"$NEW_RPC\",\"privkey\":\"$NEW_KEY\",\"dup\":$2,\"retcode\":$retcode}"
+	echo_json "{\"message\":\"dupe successfully installed\",\"ip\":\"$([[ $show_ip ]] && echo $show_ip || echo undefined)\",\"port\":\"$mn_port\",\"rpc\":\"$NEW_RPC\",\"privkey\":\"$NEW_KEY\",\"dup\":$2,\"retcode\":$retcode}"
 }
 function cmd_reinstall() {
 	# <$1 = profile_name> | <$2 = instance_number>
+
+	if [[ $FORCE_LISTEN == "1" && ! $IP ]]; then
+		echo -e "${RED}ERROR:${NC} A profile with ${MAGENTA}FORCE_LISTEN=1${NC} requires a IP with -ip=IP extra parameter when reinstalling a dupe"
+		echo_json "{\"error\":\"A profile with FORCE_LISTEN=1 requires a IP when reinstalling a dupe\",\"errcode\":17}" 
+		return
+	fi
 
 	systemctl stop $COIN_NAME-$2.service
 	[[ $(exec_coin cli $2 stop 2> /dev/null) ]] && sleep 3
@@ -545,14 +580,15 @@ function cmd_bootstrap() {
 	function main_mn_try_bootstrap() {
 		# <$1 = destiny> | <$2 = origin> | [$3 = try_dupes]
 		[[ ! $COIN_SERVICE ]] && echo -e "${MAGENTA}Main MN service not detected in the profile, can't temporary stop the main node to copy the chain.${NC}" || echo -e "${MAGENTA}Main MN service ($COIN_SERVICE) not found in /etc/systemd/system${NC}"
-		if [[ "$2" == "0" && "$3" == "1" && $DUP_COUNT -ge 2 ]]; then
+		if [[ $2 -eq 0 && $3 -eq 1 && $DUP_COUNT -ge 2 ]]; then
 			echo -e "Trying to use the first dupe available for the bootstrap..."
-			bootstrap_proc $1 $([[ "$1" == "1" ]] && echo 2 || echo 1)
-			return
+			bootstrap_proc $1 $([[ $1 -eq 1 ]] && echo 2 || echo 1)
+		else
+			echo -e "Main masternode must be stopped to copy the chain, use ${GREEN}$COIN_CLI stop${NC} to stop the main node."
+			[[ $2 -eq 0 ]] && echo -e "Optionally you can put use a dupe as source of the chain files, example: ${YELLOW}dupmn bootstrap PROFILE 2 1${NC} (copy dupe 1 to dupe 2)."
+			echo -e "NOTE: Some main nodes may need to stop a systemd service instead, like ${GREEN}systemctl stop $COIN_NAME.service${NC}."
+			echo_json "{\"error\":\"Main node must be manually stopped for the bootstrap\",\"errcode\":18}"
 		fi
-		echo -e "Main masternode must be stopped to copy the chain, use ${GREEN}$COIN_CLI stop${NC} to stop the main node."
-		[[ "$2" == "0" ]] && echo -e "Optionally you can put use a dupe as source of the chain files, example: ${YELLOW}dupmn bootstrap PROFILE 2 1${NC} (copy dupe 1 to dupe 2)."
-		echo -e "NOTE: Some main nodes may need to stop a systemd service instead, like ${GREEN}systemctl stop $COIN_NAME.service${NC}."
 	}
 
 	function bootstrap_proc() {
@@ -582,6 +618,7 @@ function cmd_bootstrap() {
 
 		if [[ $1 -eq $2 ]]; then
 			echo "You cannot use the same node for the chain copy... that doesn't makes sense"
+			echo_json "{\"error\":\"Cannot use the same node for the bootstrap\",\"errcode\":19}"
 		elif [[ ($1 -eq 0 || $2 -eq 0) && $(wallet_loaded) && (! $COIN_SERVICE || ! -f /etc/systemd/system/$COIN_SERVICE) ]]; then 
 			main_mn_try_bootstrap $1 $2 $3
 		elif [[ ! $(wallet_loaded $2) ]]; then 
@@ -600,12 +637,12 @@ function cmd_bootstrap() {
 		local origin_service=$([[ $2 -gt 0 ]] && echo "$COIN_NAME-$2.service" || echo "$COIN_SERVICE")
 		local origin_loaded=$(wallet_loaded $2)
 		if [[ $origin_loaded ]]; then
-			[[ "$2" == "0" && (! $COIN_SERVICE || ! -f /etc/systemd/system/$COIN_SERVICE) ]] && main_mn_try_bootstrap $1 $2 && return
+			[[ $2 -eq 0 && (! $COIN_SERVICE || ! -f /etc/systemd/system/$COIN_SERVICE) ]] && main_mn_try_bootstrap $1 $2 && return
 			systemctl stop $origin_service 
 			[[ $($COIN_CLI-$2 stop 2> /dev/null) ]] && sleep 3
 		fi
 		for (( i=0; i<=$DUP_COUNT; i++ )); do
-			[[ $i != $2 ]] && bootstrap_proc $i $2
+			[[ $i != $2 ]] && bootstrap_proc $i $2 3>/dev/null
 		done
 		if [[ $origin_loaded ]]; then
 			systemctl start $origin_service
@@ -956,7 +993,6 @@ function main() {
 		for x in $@; do
 			if [[ ! $IP && "$x" =~ ^-ip=* ]]; then
 				ip_parse ${x:4} "1"
-				echo -e "!!! -ip parameter stills in beta state !!!"
 			elif [[ ! $NEW_RPC && "$x" =~ ^-rpcport=* ]]; then
 				NEW_RPC=${x:9}
 				[[ $NEW_RPC -lt 1024 ||  $NEW_RPC -gt 49151 ]] && echo "-rpcport must be between 1024 and 49451" && exit
