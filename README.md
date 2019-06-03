@@ -28,13 +28,13 @@ Check the [Usage example](#usage-example) to see the guide of the steps to follo
 - [`dupmn profdel <profile_name>`](https://github.com/neo3587/dupmn/wiki/Commands#profdel) : Deletes the saved profile with the given name and uninstalls the duplicated instances that uses that profile.
 - [`dupmn install <profile_name> [optional_params]`](https://github.com/neo3587/dupmn/wiki/Commands#install) : Install a new instance based on the parameters of the given profile name.
 `[optional_params]` list:  
-`-ip=IP` : Use a specific IPv4 or IPv6 (BETA STATE).  
+`-ip=IP` : Use a specific IPv4 or IPv6.  
 `-rpcport=PORT` : Use a specific port for RPC commands (must be valid and not in use).  
 `-privkey=PRIVATEKEY` : Set a user-defined masternode private key.  
 `-bootstrap` : Apply a bootstrap during the installation.  
 - [`dupmn reinstall <profile_name> <number> [optional_params]`](https://github.com/neo3587/dupmn/wiki/Commands#reinstall) : Reinstalls the specified instance, this is just in case if the instance is giving problems.
 `[optional_params]` list:  
-`-ip=IP` : Use a specific IPv4 or IPv6 (BETA STATE).  
+`-ip=IP` : Use a specific IPv4 or IPv6.  
 `-rpcport=PORT` : Use a specific port for RPC commands (must be valid and not in use).  
 `-privkey=PRIVATEKEY` : Set a user-defined masternode private key.  
 `-bootstrap` : Apply a bootstrap during the reinstallation.  
@@ -118,6 +118,7 @@ COIN_FOLDER="/root/.OtherCoin"    # Folder where the conf file and blockchain ar
 COIN_CONFIG="OtherCoin.conf"      # Name of the conf file
 RPC_PORT=45454                    # NOT required parameter, it's just to force to start looking from a specific rpc port for those coins that doesn't have a rpcport parameter in the .conf file or that the main node rpc port is not between 1024 and 49451 (otherwise it will start looking at 1024).
 COIN_SERVICE="OtherCoin.service"  # NOT required parameter, if you have a service for the main node, add this parameter for the systemctlall and bootstrap commands.
+FORCE_LISTEN=1                    # USE ONLY IF THE MASTERNODE FORCES YOU TO HAVE listen=1 ON THE .CONF FILE, some mns forces you to use a different IP for each MN, but a few of them also forces you to listen a binded socket, this parameter will change how the dupes are installed to work with them (NOTE: they usually will force you to use a IPv4).
 ```
 As with the <b>Usage example</b>, you just need to type these commands to create a new duplicated masternode:
 ```
