@@ -1,0 +1,7 @@
+COIN_NAME="phonecoin"
+COIN_PATH="/usr/local/bin/"
+COIN_DAEMON="phonecoind"
+COIN_CLI="phonecoin-cli"
+COIN_FOLDER="/root/.phonecoin"
+COIN_CONFIG="phonecoin.conf"
+COIN_SERVICE="phonecoin.service"
