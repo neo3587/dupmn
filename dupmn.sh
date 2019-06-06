@@ -1024,36 +1024,36 @@ function main() {
 
 	case "$1" in
 		"profadd")
-			exit_no_param $2 "${YELLOW}dupmn profadd <prof_file> [prof_name]${NC} requires a profile file and optionally a new profile name as parameters"
+			exit_no_param "$2" "${YELLOW}dupmn profadd <prof_file> [prof_name]${NC} requires a profile file and optionally a new profile name as parameters"
 			cd $curr_dir
 			cmd_profadd $2 $3
 			;;
 		"profdel")
-			exit_no_param $2 "${YELLOW}dupmn profadd <prof_name>${NC} requires a profile name as parameter"
+			exit_no_param "$2" "${YELLOW}dupmn profadd <prof_name>${NC} requires a profile name as parameter"
 			load_profile $2
 			cmd_profdel $2
 			;;
 		"install")
-			exit_no_param $2 "${YELLOW}dupmn install <coin_name> [opt_params]${NC} requires a profile name of an added profile as a parameter"
+			exit_no_param "$2" "${YELLOW}dupmn install <coin_name> [opt_params]${NC} requires a profile name of an added profile as a parameter"
 			load_profile $2 "1"
 			opt_install_params "${@:3}"
 			cmd_install $2 $(($DUP_COUNT+1))
 			;;
 		"reinstall")
-			exit_no_param $3 "${YELLOW}dupmn reinstall <coin_name> <number> [opt_params]${NC} requires a profile name and a instance as parameters"
+			exit_no_param "$3" "${YELLOW}dupmn reinstall <coin_name> <number> [opt_params]${NC} requires a profile name and a instance as parameters"
 			load_profile $2 "1"
 			instance_valid $3
 			opt_install_params "${@:4}"
 			cmd_reinstall $2 $(stoi $3)
 			;;
 		"uninstall")
-			exit_no_param $3 "${YELLOW}dupmn uninstall <coin_name> <number|all>${NC} requires a profile name and a number (or all) as parameters"
+			exit_no_param "$3" "${YELLOW}dupmn uninstall <coin_name> <number|all>${NC} requires a profile name and a number (or all) as parameters"
 			load_profile $2
 			[[ $3 != "all" ]] && instance_valid $3
 			cmd_uninstall $2 $([[ $3 == "all" ]] && echo "all" || echo $(stoi $3))
 			;;
 		"bootstrap")
-			exit_no_param $3 "${YELLOW}dupmn bootstrap <prof_name> <number|all> [number]${NC} requires a profile name and a number as parameters"
+			exit_no_param "$3" "${YELLOW}dupmn bootstrap <prof_name> <number|all> [number]${NC} requires a profile name and a number as parameters"
 			load_profile $2 "1"
 			[[ $3 != "all" ]] && instance_valid $3 "1"
 			[[ $4 ]] && instance_valid $4 "1"
@@ -1063,7 +1063,7 @@ function main() {
 			cmd_iplist
 			;;
 		"ipadd")
-			exit_no_param $3 "${YELLOW}dupmn ipadd <ip> <netmask> [interface]${NC} requires a IP, a netmask and a interface name (if there's more than 1)"
+			exit_no_param "$3" "${YELLOW}dupmn ipadd <ip> <netmask> [interface]${NC} requires a IP, a netmask and a interface name (if there's more than 1)"
 			ip_parse $2
 			cmd_ipmod "add" $2 $3 $4
 			;;
@@ -1073,13 +1073,13 @@ function main() {
 			cmd_ipmod "del" $2 $3 $4
 			;;
 		"rpcchange")
-			exit_no_param $3 "${YELLOW}dupmn rpcchange <prof_name> <number> [port]${NC} requires a profile name, instance number and optionally a port number as parameters"
+			exit_no_param "$3" "${YELLOW}dupmn rpcchange <prof_name> <number> [port]${NC} requires a profile name, instance number and optionally a port number as parameters"
 			load_profile $2 "1"
 			instance_valid $3
 			cmd_rpcchange $2 $(stoi $3) $4
 			;;
 		"systemctlall")
-			exit_no_param $3 "${YELLOW}dupmn systemctlall <prof_name> <command>${NC} requires a profile name and a command as parameters"
+			exit_no_param "$3" "${YELLOW}dupmn systemctlall <prof_name> <command>${NC} requires a profile name and a command as parameters"
 			load_profile $2
 			cmd_systemctlall $2 $3
 			;;
@@ -1088,7 +1088,7 @@ function main() {
 			cmd_list $2
 			;;
 		"swapfile")
-			exit_no_param $2 "${YELLOW}dupmn swapfile <size_in_mbytes>${NC} requires a number as parameter"
+			exit_no_param "$2" "${YELLOW}dupmn swapfile <size_in_mbytes>${NC} requires a number as parameter"
 			cmd_swapfile $2
 			;;
 		"checkmem")
