@@ -4,6 +4,7 @@
 # Source: https://github.com/neo3587/dupmn
 
 # TODO:
+# - dupmn rpcchange => allow main node + don't reenable if stopped
 # - dupmn list [profile|param] => param: -online | -status | -ip | -rcport | -privkey
 # - dupmn any_command 3>&1 &>/dev/null => get a json instead (looot of work)
 #    + general      [1-3] (X)
@@ -729,13 +730,13 @@ function cmd_ipmod() {
 function cmd_rpcchange() {
 	# <$1 = profile_name> | <$2 = instance_number> | [$3 = port_number]
 
-	local new_port=$(stoi $(conf_get_value $COIN_FOLDER$2/$COIN_CONFIG "rpcport"))
+	local new_port=$(stoi $(conf_get_value $(get_folder $2)/$COIN_CONFIG "rpcport"))
 
 	if [[ ! $3 ]]; then
-		echo -e "No port provided, the port will be changed for any other free port..."
+		echo -e "No port provided, the rpc port will be changed for any other free port..."
 		new_port=$(find_port $new_port)
 	elif [[ ! $(is_number $3) ]]; then
-		echo -e "${YELLOW}dupmn rpcchange <prof_name> <number> [port]${NC}, [port] must be a number"
+		echo -e "${CYAN}$3${NC} is not a number"
 		return
 	elif [[ $3 -lt 1024 || $3 -gt 49151 ]]; then
 		echo -e "${MAGENTA}$3${NC} is not a valid or a reserved port (must be between ${MAGENTA}1024${NC} and ${MAGENTA}49151${NC})"
@@ -748,11 +749,11 @@ function cmd_rpcchange() {
 		fi
 	fi
 
-	$(conf_set_value $COIN_FOLDER$2/$COIN_CONFIG "rpcport" $NEW_PORT 1)
+	$(conf_set_value $(get_folder $2)/$COIN_CONFIG "rpcport" $new_port 1)
 	systemctl stop $COIN_NAME-$2.service > /dev/null
 	systemctl start $COIN_NAME-$2.service
 
-	echo -e "${BLUE}$1${NC} instance ${CYAN}number $2${NC} is now listening the rpc port ${MAGENTA}$NEW_PORT${NC}"
+	echo -e "${BLUE}$1${NC} instance ${CYAN}number $2${NC} is now listening the rpc port ${MAGENTA}$new_port${NC}"
 }
 function cmd_systemctlall() {
 	# <$1 = profile_name> | <$2 = command>
