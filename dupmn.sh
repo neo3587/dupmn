@@ -14,11 +14,11 @@
 #    + profdel      [load_profile] (X)
 #    + install      [load_profile + using_ip + 17] (X)
 #    + reinstall    [install] (X)
-#    + uninstall    [load_profile + select_dupe] ( )
-#    + bootstrap    [load_profile + select_dupe + 18-19] ( )
+#    + uninstall    [load_profile + select_dupe] (X)
+#    + bootstrap    [load_profile + select_dupe + 18-19] (X)
 #    + iplist       [none] ( )
-#    + ipadd        [using_ip + ??] ( )
-#    + ipdel        [using_ip + ??] ( )
+#    + ipadd        [using_ip + 20-24] ( )
+#    + ipdel        [using_ip + 20-23 + 25] ( )
 #    + rpcchange    [load_profile + select_dupe + ??] ( )
 #    + systemctlall [load_profile + ??] ( )
 #    + list         [none] ( )
@@ -61,6 +61,9 @@ FORCE_LISTEN=""
 function echo_json() {
 	[[ -t 3 ]] && echo -e "$1" >&3
 }
+function json_bool() {
+	[[ $1 ]] && echo true || echo false
+}
 function load_profile() {
 	# <$1 = profile_name> | [$2 = check_exec]
 
@@ -102,7 +105,7 @@ function load_profile() {
 	EXEC_COIN_CLI="${prof[COIN_PATH]}$COIN_CLI"
 	FORCE_LISTEN="${prof[FORCE_LISTEN]}"
 
-	if [[ "$2" == "1" ]]; then
+	if [[ $2 -eq 1 ]]; then
 		if [[ ! -f "$EXEC_COIN_DAEMON" ]]; then
 			EXEC_COIN_DAEMON=$(which $COIN_DAEMON)
 			if [[ ! -f "$EXEC_COIN_DAEMON" ]]; then
@@ -183,11 +186,23 @@ function configure_systemd() {
 	chmod +x /etc/systemd/system/$service_name.service
 
 	systemctl daemon-reload
-	[[ $INSTALL_BOOTSTRAP ]] && cmd_bootstrap $1 0 1 3>/dev/null
-	[[ $1 ]] && systemctl start $service_name.service
+	if [[ $1 && $INSTALL_BOOTSTRAP ]]; then
+		if [[ ! $(wallet_loaded) || ($COIN_SERVICE && -f /etc/systemd/system/$COIN_SERVICE) ]]; then
+			cmd_bootstrap 0 $1 3>/dev/null
+		elif [[ $DUP_COUNT -ge 2 && $1 -ge 2 ]]; then
+			echo -e "${MAGENTA}NOTE:${NC} Can't stop the main node, trying the bootstrap with the dupe ${CYAN}1${NC}"
+			cmd_bootstrap 1 $1 3>/dev/null
+		elif [[ $DUP_COUNT -ge 2 && $1 -eq 1 ]]; then
+			echo -e "${MAGENTA}NOTE:${NC} Can't stop the main node, trying the bootstrap with the dupe ${CYAN}2${NC}"
+			cmd_bootstrap 2 $1 3>/dev/null
+		else
+			echo -e "${YELLOW}WARNING:${NC} Can't automatically apply the bootstrap, use ${GREEN}dupmn bootstrap${NC} manually"
+		fi
+	fi
+	[[ $1 ]] && systemctl start $service_name.service && sleep 1
 	systemctl enable $service_name.service > /dev/null 2>&1
 
-	if [[ $1 && -z "$(ps axo cmd:100 | egrep $service_name)" ]]; then
+	if [[ $1 && ! "$(ps axo cmd:100 | egrep $service_name)" ]]; then
 		echo -e "\n${RED}IMPORTANT!!!${NC} \
 			\nSeems like there might be a problem with the systemctl configuration, please investigate.\
 			\nYou should start by running the following commands:\
@@ -453,7 +468,7 @@ function cmd_install() {
 		$(conf_set_value $new_folder/$COIN_CONFIG "masternodeaddr" $IP:$mn_port 0)
 
 		if [[ $FORCE_LISTEN == "1" ]]; then
-			
+
 			$(conf_set_value $new_folder/$COIN_CONFIG "bind"   $IP 1)
 			$(conf_set_value $new_folder/$COIN_CONFIG "listen" "1" 1)
 
@@ -493,7 +508,7 @@ function cmd_install() {
 			\nNOTE 1: ${GREEN}$COIN_CLI-0${NC} and ${GREEN}$COIN_DAEMON-0${NC} are just a reference to the 'main masternode', not a created one with dupmn.\
 			\nNOTE 2: You can use ${GREEN}$COIN_CLI-all [parameters]${NC} and ${GREEN}$COIN_DAEMON-all [parameters]${NC} to apply the parameters on all masternodes. Example: ${GREEN}$COIN_CLI-all masternode status${NC}\
 			\n==================================================================================================="
-	
+
 	local retcode=0
 	if [[ $IP ]]; then
 		for (( i=0; i<$DUP_COUNT; i++ )); do 
@@ -550,6 +565,7 @@ function cmd_uninstall() {
 		$(make_chmod_file /usr/bin/$COIN_CLI-all    "#!/bin/bash\nfor (( i=0; i<=0; i++ )) do\n echo -e MN\$i:\n $COIN_CLI-\$i \$@\ndone")
 		$(make_chmod_file /usr/bin/$COIN_DAEMON-all "#!/bin/bash\nfor (( i=0; i<=0; i++ )) do\n echo -e MN\$i:\n $COIN_DAEMON-\$i \$@\ndone")
 		systemctl daemon-reload
+		echo_json "{\"message\":\"dupe/s successfully uninstalled\",\"count\":$DUP_COUNT,\"dupes\":[$(seq -s ',' 1 $DUP_COUNT)]}"
 	else
 		echo -e "Uninstalling ${BLUE}$1${NC} instance ${CYAN}number $2${NC}"
 		rm -rf /usr/bin/$COIN_CLI-$DUP_COUNT
@@ -572,86 +588,60 @@ function cmd_uninstall() {
 		systemctl disable $COIN_NAME-$DUP_COUNT.service > /dev/null 2>&1
 		rm -rf /etc/systemd/system/$COIN_NAME-$DUP_COUNT.service
 		systemctl daemon-reload
+		echo_json "{\"message\":\"dupe/s successfully uninstalled\",\"count\":1,\"dupes\":[$2]}"
 	fi
 }
 function cmd_bootstrap() {
-	# <$1 = destiny> | <$2 = origin> | [$3 = try_dupes]
+	# <$1 = origin> | <$2 = destiny>
 
-	function main_mn_try_bootstrap() {
-		# <$1 = destiny> | <$2 = origin> | [$3 = try_dupes]
-		[[ ! $COIN_SERVICE ]] && echo -e "${MAGENTA}Main MN service not detected in the profile, can't temporary stop the main node to copy the chain.${NC}" || echo -e "${MAGENTA}Main MN service ($COIN_SERVICE) not found in /etc/systemd/system${NC}"
-		if [[ $2 -eq 0 && $3 -eq 1 && $DUP_COUNT -ge 2 ]]; then
-			echo -e "Trying to use the first dupe available for the bootstrap..."
-			bootstrap_proc $1 $([[ $1 -eq 1 ]] && echo 2 || echo 1)
-		else
+	local service_1=$([[ $1 -gt 0 ]] && echo "$COIN_NAME-$1.service" || echo "$COIN_SERVICE")
+	local service_2=$([[ $2 -gt 0 ]] && echo "$COIN_NAME-$2.service" || echo "$COIN_SERVICE")
+
+	if [[ $1 -eq $2 ]]; then
+		echo "You cannot use the same node for the chain copy... that doesn't makes sense"
+		echo_json "{\"error\":\"Cannot use the same node for the bootstrap\",\"errcode\":18}"
+		return
+	elif [[ ($1 -eq 0 || $2 -eq 0) && $(wallet_loaded) ]]; then 
+		if [[ ! $COIN_SERVICE || ! -f /etc/systemd/system/$COIN_SERVICE ]]; then
+			[[ ! $COIN_SERVICE ]] && echo -e "${MAGENTA}Main MN service not detected in the profile, can't temporary stop the main node to copy the chain.${NC}" || echo -e "${MAGENTA}Main MN service ($COIN_SERVICE) not found in /etc/systemd/system${NC}"			
 			echo -e "Main masternode must be stopped to copy the chain, use ${GREEN}$COIN_CLI stop${NC} to stop the main node."
 			[[ $2 -eq 0 ]] && echo -e "Optionally you can put use a dupe as source of the chain files, example: ${YELLOW}dupmn bootstrap PROFILE 2 1${NC} (copy dupe 1 to dupe 2)."
 			echo -e "NOTE: Some main nodes may need to stop a systemd service instead, like ${GREEN}systemctl stop $COIN_NAME.service${NC}."
-			echo_json "{\"error\":\"Main node must be manually stopped for the bootstrap\",\"errcode\":18}"
+			echo_json "{\"error\":\"Main node must be manually stopped for the bootstrap\",\"errcode\":19}"
+			return
 		fi
-	}
-
-	function bootstrap_proc() {
-		# <$1 = destiny> | <$2 = origin> | [$3 = try_dupes]
-
-		function copy_chain() {
-			# <$1 = origin> | <$2 = destiny>
-			local dest_loaded=$(wallet_loaded $2)
-			if [[ $dest_loaded ]]; then
-				systemctl stop $service_1 
-				[[ $($COIN_CLI-$2 stop 2> /dev/null) ]] && sleep 3
-			fi
-			echo "Copying stored chain from node $1 to $2... (may take a while)"
-			for x in $(ls $(get_folder $2) | grep -v ".conf\|wallet.dat"); do
-				rm -rf $(get_folder $2)$x;
-			done
-			rsync -adm --ignore-existing --info=progress2 $(get_folder $1) $(get_folder $2)
-			if [[ $dest_loaded ]]; then
-				systemctl start $service_1
-				echo -e "Reactivating node $2..."
-				(wallet_loaded $2 20 > /dev/null)
-			fi
-		}
-
-		local service_1=$([[ $1 -gt 0 ]] && echo "$COIN_NAME-$1.service" || echo "$COIN_SERVICE")
-		local service_2=$([[ $2 -gt 0 ]] && echo "$COIN_NAME-$2.service" || echo "$COIN_SERVICE")
-
-		if [[ $1 -eq $2 ]]; then
-			echo "You cannot use the same node for the chain copy... that doesn't makes sense"
-			echo_json "{\"error\":\"Cannot use the same node for the bootstrap\",\"errcode\":19}"
-		elif [[ ($1 -eq 0 || $2 -eq 0) && $(wallet_loaded) && (! $COIN_SERVICE || ! -f /etc/systemd/system/$COIN_SERVICE) ]]; then 
-			main_mn_try_bootstrap $1 $2 $3
-		elif [[ ! $(wallet_loaded $2) ]]; then 
-			copy_chain $2 $1
-		else
-			systemctl stop $service_2
-			[[ $($COIN_CLI-$2 stop 2> /dev/null) ]] && sleep 3
-			copy_chain $2 $1
-			systemctl start $service_2
-			echo -e "Reactivating node $2..."
-			(wallet_loaded $2 20 > /dev/null)
-		fi
-	}
-
-	if [[ $1 == "all" ]]; then
-		local origin_service=$([[ $2 -gt 0 ]] && echo "$COIN_NAME-$2.service" || echo "$COIN_SERVICE")
-		local origin_loaded=$(wallet_loaded $2)
-		if [[ $origin_loaded ]]; then
-			[[ $2 -eq 0 && (! $COIN_SERVICE || ! -f /etc/systemd/system/$COIN_SERVICE) ]] && main_mn_try_bootstrap $1 $2 && return
-			systemctl stop $origin_service 
-			[[ $($COIN_CLI-$2 stop 2> /dev/null) ]] && sleep 3
-		fi
-		for (( i=0; i<=$DUP_COUNT; i++ )); do
-			[[ $i != $2 ]] && bootstrap_proc $i $2 3>/dev/null
-		done
-		if [[ $origin_loaded ]]; then
-			systemctl start $origin_service
-			echo -e "Reactivating node $2..."
-			(wallet_loaded $2 20 > /dev/null)
-		fi
-	else
-		bootstrap_proc $1 $2 $3
 	fi
+
+	local orig_loaded=$(wallet_loaded $1)
+	local dest_loaded=$(wallet_loaded $2)
+
+	if [[ $orig_loaded ]]; then
+		systemctl stop $service_1
+		[[ $($(exec_coin cli 1) stop 2> /dev/null) ]] && sleep 3
+	fi
+	if [[ $dest_loaded ]]; then
+		systemctl stop $service_2
+		[[ $($(exec_coin cli 2) stop 2> /dev/null) ]] && sleep 3
+	fi
+
+	echo "Copying stored chain from node $1 to $2... (may take a while)"
+	for x in $(ls $(get_folder $2) | grep -v ".conf\|wallet.dat"); do
+		rm -rf $(get_folder $2)$x
+	done
+	rsync -adm --ignore-existing --info=progress2 $(get_folder $1) $(get_folder $2)
+
+	if [[ $orig_loaded ]]; then
+		systemctl start $service_1
+		echo -e "Reactivating node $1..."
+		(wallet_loaded $1 20 > /dev/null)
+	fi
+	if [[ $dest_loaded ]]; then
+		systemctl start $service_2
+		echo -e "Reactivating node $2..."
+		(wallet_loaded $2 20 > /dev/null)
+	fi
+
+	echo_json "{\"message\":\"Bootstrap applied\",\"origin\":{\"node\":$1,\"reenabled\":$(json_bool $orig_loaded)},\"destiny\":{\"node\":$2,\"reenabled\":$(json_bool $dest_loaded)}}"
 }
 function cmd_iplist() {
 	for iface in $(ls /sys/class/net | grep -v "lo"); do
@@ -663,6 +653,7 @@ function cmd_iplist() {
 			echo -e "  ${CYAN}$ip${NC}"
 		done
 	done
+	# { "list": [ { "iface": $iface, "ip": "$ip | cut -d / -f1", "netmask": $ip | cut -d / -f2, "type": 4 or 6 },...]}
 }
 function cmd_ipmod() {
 	# <$1 = add|del> | <$2 = ip> | <$3 = netmask> | [$4 = interface]
@@ -672,19 +663,19 @@ function cmd_ipmod() {
 
 	if [[ ! $netmask ]]; then
 		echo -e "${RED}ERROR:${NC} ${GREEN}$3${NC} hasn't a proper netmask structure"
-		# 17
+		# err 20
 		return
 	elif [[ $netmask -lt 0 || $netmask -gt $([[ $IP_TYPE == 4 ]] && echo 32 || echo 128) ]]; then
 		echo -e "${RED}ERROR:${NC} Netmask must be a value between 0 and $([[ $IP_TYPE == 4 ]] && echo 32 || echo 128)"
-		# 18
+		# err 21
 		return
 	elif [[ $4 && ! $(ls /sys/class/net | grep -v "lo" | grep "^$4$") ]]; then
 		echo -e "${RED}ERROR:${NC} Interface ${GREEN}$4${NC} doesn't exists, use ${YELLOW}dupmn iplist${NC} to see the existing interfaces"
-		# 19
+		# err 22
 		return
 	elif [[ $(echo "$iface" | wc -l) -gt 1 ]]; then
 		echo -e "${RED}ERROR:${NC} There are 2 or more available interfaces, you'll have to specify it as an extra parameter, use ${YELLOW}dupmn iplist${NC} to see the existing interfaces"
-		# 20
+		# err 23
 		return
 	fi
 
@@ -695,11 +686,11 @@ function cmd_ipmod() {
 	fi
 	if [[ $1 == "add" && $(get_ips $IP_TYPE 0 $iface | grep "^$IP$") ]]; then
 		echo -e "${RED}ERROR:${NC} IP ${CYAN}$2${NC} already exists in the interface ${GREEN}$iface${NC}"
-		# 21
+		# err 24
 		return
 	elif [[ $1 == "del" && ! $(get_ips $IP_TYPE 0 $iface | grep "^$IP$") ]]; then
 		echo -e "${RED}ERROR:${NC} IP ${CYAN}$2${NC} doesn't exists in the interface ${GREEN}$iface${NC}"
-		# 22
+		# err 25
 		return
 	fi
 
@@ -709,7 +700,7 @@ function cmd_ipmod() {
 		local initd=$(cat /etc/init.d/dupmn_ipmanage | grep "^ip")
 		if [[ $1 == "add" ]]; then
 			initd+="\nip -$IP_TYPE addr add $IP/$netmask dev $iface"
-		else 
+		else
 			initd=$(echo "$initd" | grep -v "ip -$IP_TYPE addr add $IP/$netmask dev $iface")
 		fi
 		echo -e "#!/bin/sh -e\
@@ -745,15 +736,15 @@ function cmd_rpcchange() {
 		new_port=$(find_port $new_port)
 	elif [[ ! $(is_number $3) ]]; then
 		echo -e "${YELLOW}dupmn rpcchange <prof_name> <number> [port]${NC}, [port] must be a number"
-		exit
+		return
 	elif [[ $3 -lt 1024 || $3 -gt 49151 ]]; then
 		echo -e "${MAGENTA}$3${NC} is not a valid or a reserved port (must be between ${MAGENTA}1024${NC} and ${MAGENTA}49151${NC})"
-		exit
+		return
 	else
-		new_port=$(($3))
+		new_port=$(stoi $3)
 		if [[ ! $(port_check $new_port) ]]; then
 			echo -e "Port ${MAGENTA}$new_port${NC} seems to be in use by another process"
-			exit
+			return
 		fi
 	fi
 
@@ -869,32 +860,32 @@ function cmd_checkmem() {
 }
 function cmd_help() {
 	echo -e "Options:\
-			\n  - ${YELLOW}dupmn profadd <prof_file> [prof_name]             ${NC}Adds a profile that will be used to create duplicates of the masternode, it will use the COIN_NAME parameter as name if a prof_name is not provided.\
-			\n  - ${YELLOW}dupmn profdel <prof_name>                         ${NC}Deletes the given profile name, this will uninstall too any duplicated instance that uses this profile.\
-			\n  - ${YELLOW}dupmn install <prof_name> [params...]             ${NC}Install a new instance based on the parameters of the given profile name.\
+			\n  - ${YELLOW}dupmn profadd <prof_file> [prof_name]          ${NC}Adds a profile that will be used to create duplicates of the masternode, it will use the COIN_NAME parameter as name if a prof_name is not provided.\
+			\n  - ${YELLOW}dupmn profdel <prof_name>                      ${NC}Deletes the given profile name, this will uninstall too any dupe that uses this profile.\
+			\n  - ${YELLOW}dupmn install <prof_name> [params...]          ${NC}Install a new dupe based on the parameters of the given profile name.\
 			\n      ${YELLOW}[params]${NC} list:\
-			\n        ${GREEN}-ip=${NC}IP               Use a specific IPv4 or IPv6 (BETA STATE).\
+			\n        ${GREEN}-ip=${NC}IP               Use a specific IPv4 or IPv6.\
 			\n        ${GREEN}-rpcport=${NC}PORT        Use a specific port for RPC commands (must be valid and not in use).\
 			\n        ${GREEN}-privkey=${NC}PRIVATEKEY  Set a user-defined masternode private key.\
 			\n        ${GREEN}-bootstrap${NC}           Apply a bootstrap during the installation.\
-			\n  - ${YELLOW}dupmn reinstall <prof_name> <number> [params...]  ${NC}Reinstalls the specified instance, this is just in case if the instance is giving problems.\
+			\n  - ${YELLOW}dupmn reinstall <prof_name> <node> [params...] ${NC}Reinstalls the specified dupe, this is just in case if the dupe is giving problems.\
 			\n      ${YELLOW}[params]${NC} list:\
-			\n        ${GREEN}-ip=${NC}IP               Use a specific IPv4 or IPv6 (BETA STATE).\
+			\n        ${GREEN}-ip=${NC}IP               Use a specific IPv4 or IPv6.\
 			\n        ${GREEN}-rpcport=${NC}PORT        Use a specific port for RPC commands (must be valid and not in use).\
 			\n        ${GREEN}-privkey=${NC}PRIVATEKEY  Set a user-defined masternode private key.\
 			\n        ${GREEN}-bootstrap${NC}           Apply a bootstrap during the reinstallation.\
-			\n  - ${YELLOW}dupmn uninstall <prof_name> <number|all>          ${NC}Uninstall the specified instance of the given profile name, you can put ${YELLOW}all${NC} instead of a number to uninstall all the duplicated instances.\
-			\n  - ${YELLOW}dupmn bootstrap <prof_name> <number|all> [number] ${NC}Copies the chain from the main node to a dupe or optionally from one dupe to another one.\
-			\n  - ${YELLOW}dupmn iplist                                      ${NC}Shows all your configurated IPv4 and IPv6.\
-			\n  - ${YELLOW}dupmn ipadd <ip> <netmask> [interface]            ${NC}Allows the system to recognize a new IPv4 or IPv6.\
-			\n  - ${YELLOW}dupmn ipdel <ip> <netmask> [interface]            ${NC}Deletes an already recognized IPv4 or IPv6.\
-			\n  - ${YELLOW}dupmn rpcchange <prof_name> <number> [port]       ${NC}Changes the RPC port used from the given number instance with the new one (or finds a new one by itself if no port is given).\
-			\n  - ${YELLOW}dupmn systemctlall <prof_name> <command>          ${NC}Applies the systemctl command to all the duplicated instances of the given profile name (but not the main instance).\
-			\n  - ${YELLOW}dupmn list [prof_name]                            ${NC}Shows the amount of duplicated instances of every masternode, if a profile name is provided, it lists an extended info of the profile instances.\
-			\n  - ${YELLOW}dupmn checkmem                                    ${NC}Shows the memory usage (%) of every group of nodes.\
-			\n  - ${YELLOW}dupmn swapfile <size_in_mbytes>                   ${NC}Creates, changes or deletes (if parameter is 0) a swapfile of the given size in MB to increase the virtual memory.\
-			\n  - ${YELLOW}dupmn update                                      ${NC}Checks the last version of the script and updates it if necessary.\
-			\n**NOTE 1**: ${YELLOW}<parameter>${NC} means required, ${YELLOW}[parameter]${NC} means optional.\
+			\n  - ${YELLOW}dupmn uninstall <prof_name> <node|all>         ${NC}Uninstall the specified node of the given profile name, you can put ${YELLOW}all${NC} instead of a node number to uninstall all the duplicated instances.\
+			\n  - ${YELLOW}dupmn bootstrap <prof_name> <node_1> <node_2>  ${NC}Copies the chain from node_1 to node_2.\
+			\n  - ${YELLOW}dupmn iplist                                   ${NC}Shows all your configurated IPv4 and IPv6.\
+			\n  - ${YELLOW}dupmn ipadd <ip> <netmask> [interface]         ${NC}Allows the system to recognize a new IPv4 or IPv6.\
+			\n  - ${YELLOW}dupmn ipdel <ip> <netmask> [interface]         ${NC}Deletes an already recognized IPv4 or IPv6.\
+			\n  - ${YELLOW}dupmn rpcchange <prof_name> <node> [port]      ${NC}Changes the RPC port used from the given node with the new one (or finds a new one by itself if no port is given).\
+			\n  - ${YELLOW}dupmn systemctlall <prof_name> <command>       ${NC}Applies the systemctl command to all the duplicated instances of the given profile name.\
+			\n  - ${YELLOW}dupmn list [prof_name]                         ${NC}Shows the amount of duplicated instances of every masternode, if a profile name is provided, it lists an extended info of the profile instances.\
+			\n  - ${YELLOW}dupmn checkmem                                 ${NC}Shows the memory usage (%) of every group of nodes.\
+			\n  - ${YELLOW}dupmn swapfile <size_in_mbytes>                ${NC}Creates, changes or deletes (if parameter is ${CYAN}0${NC}) a swapfile of the given size in MB to increase the virtual memory.\
+			\n  - ${YELLOW}dupmn update                                   ${NC}Checks the last version of the script and updates it if necessary.\
+			\n**NOTE 1**: ${YELLOW}<parameter>${NC} means required, ${YELLOW}[parameter]${NC} means optional, ${YELLOW}node${NC} is always a number that refers to a dupe (${CYAN}0${NC} is the main node).\
 			\n**NOTE 2**: Check ${CYAN}https://github.com/neo3587/dupmn/wiki/Commands${NC} for extended info and usage examples of each command.\
 			\n**NOTE 3**: Check ${CYAN}https://github.com/neo3587/dupmn/wiki/FAQs${NC} for technical questions and troubleshooting."
 }
@@ -932,8 +923,8 @@ function main() {
 			echo -e "${RED}$1${NC} is not a number"
 			echo_json "{\"error\":\"not a number: $1\",\"errcode\":9}"
 			exit
-		elif [[ $1 -eq 0 && "$2" != "1" ]]; then
-			echo -e "Instance ${CYAN}0${NC} is a reference to the main masternode, not a duplicated one, can't use this one"
+		elif [[ $1 -eq 0 && $2 -ne 1 ]]; then
+			echo -e "Instance ${CYAN}0${NC} is a reference to the main node, not a dupe, can't use this one in this command"
 			echo_json "{\"error\":\"main node reference not allowed\",\"errcode\":10}"
 			exit
 		elif [[ $1 -gt $DUP_COUNT ]]; then
@@ -1034,30 +1025,30 @@ function main() {
 			cmd_profdel $2
 			;;
 		"install")
-			exit_no_param "$2" "${YELLOW}dupmn install <coin_name> [opt_params]${NC} requires a profile name of an added profile as a parameter"
-			load_profile $2 "1"
+			exit_no_param "$2" "${YELLOW}dupmn install <prof_name> [params...]${NC} requires a profile name of an added profile as a parameter"
+			load_profile $2 1
 			opt_install_params "${@:3}"
 			cmd_install $2 $(($DUP_COUNT+1))
 			;;
 		"reinstall")
-			exit_no_param "$3" "${YELLOW}dupmn reinstall <coin_name> <number> [opt_params]${NC} requires a profile name and a instance as parameters"
-			load_profile $2 "1"
+			exit_no_param "$3" "${YELLOW}dupmn reinstall <prof_name> <node> [params...]${NC} requires a profile name and a node number as parameters"
+			load_profile $2 1
 			instance_valid $3
 			opt_install_params "${@:4}"
 			cmd_reinstall $2 $(stoi $3)
 			;;
 		"uninstall")
-			exit_no_param "$3" "${YELLOW}dupmn uninstall <coin_name> <number|all>${NC} requires a profile name and a number (or all) as parameters"
+			exit_no_param "$3" "${YELLOW}dupmn uninstall <prof_name> <node|all>${NC} requires a profile name and a node number (or all) as parameters"
 			load_profile $2
 			[[ $3 != "all" ]] && instance_valid $3
 			cmd_uninstall $2 $([[ $3 == "all" ]] && echo "all" || echo $(stoi $3))
 			;;
 		"bootstrap")
-			exit_no_param "$3" "${YELLOW}dupmn bootstrap <prof_name> <number|all> [number]${NC} requires a profile name and a number as parameters"
-			load_profile $2 "1"
-			[[ $3 != "all" ]] && instance_valid $3 "1"
-			[[ $4 ]] && instance_valid $4 "1"
-			cmd_bootstrap $([[ $3 == "all" ]] && echo "all" || echo $(stoi $3)) $(stoi $4) $([[ ! $4 ]] && echo "1")
+			exit_no_param "$4" "${YELLOW}dupmn bootstrap <prof_name> <node_1> <node_2>${NC} requires a profile name and 2 node numbers as parameters"
+			load_profile $2 1
+			instance_valid $3 1
+			instance_valid $4 1
+			cmd_bootstrap $(stoi $3) $(stoi $4)
 			;;
 		"iplist")
 			cmd_iplist
@@ -1068,13 +1059,13 @@ function main() {
 			cmd_ipmod "add" $2 $3 $4
 			;;
 		"ipdel")
-			exit_no_param $3 "${YELLOW}dupmn ipdel <ip> <netmask> [interface]${NC} requires a IP, a netmask and a interface name (if there's more than 1)"
+			exit_no_param "$3" "${YELLOW}dupmn ipdel <ip> <netmask> [interface]${NC} requires a IP, a netmask and a interface name (if there's more than 1)"
 			ip_parse $2
 			cmd_ipmod "del" $2 $3 $4
 			;;
 		"rpcchange")
-			exit_no_param "$3" "${YELLOW}dupmn rpcchange <prof_name> <number> [port]${NC} requires a profile name, instance number and optionally a port number as parameters"
-			load_profile $2 "1"
+			exit_no_param "$3" "${YELLOW}dupmn rpcchange <prof_name> <node> [port]${NC} requires a profile name, node number and optionally a port number as parameters"
+			load_profile $2 1
 			instance_valid $3
 			cmd_rpcchange $2 $(stoi $3) $4
 			;;
@@ -1084,7 +1075,7 @@ function main() {
 			cmd_systemctlall $2 $3
 			;;
 		"list")
-			[[ $2 ]] && load_profile $2 "1"
+			[[ $2 ]] && load_profile $2 1
 			cmd_list $2
 			;;
 		"swapfile")
