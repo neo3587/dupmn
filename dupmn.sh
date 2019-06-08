@@ -618,11 +618,11 @@ function cmd_bootstrap() {
 
 	if [[ $orig_loaded ]]; then
 		systemctl stop $service_1
-		[[ $($(exec_coin cli 1) stop 2> /dev/null) ]] && sleep 3
+		[[ $($(exec_coin cli $1) stop 2> /dev/null) ]] && sleep 3
 	fi
 	if [[ $dest_loaded ]]; then
 		systemctl stop $service_2
-		[[ $($(exec_coin cli 2) stop 2> /dev/null) ]] && sleep 3
+		[[ $($(exec_coin cli $2) stop 2> /dev/null) ]] && sleep 3
 	fi
 
 	echo "Copying stored chain from node $1 to $2... (may take a while)"
