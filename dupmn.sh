@@ -4,8 +4,8 @@
 # Source: https://github.com/neo3587/dupmn
 
 # TODO:
-# - dupmn rpcchange => allow main node + don't reenable if stopped
-# - dupmn list [profile|param] => param: -online | -status | -ip | -rcport | -privkey
+# - dupmn list [profile] => rm online & status: {RED}(disabled){NC}
+# - dupmn list [profile|param] => param: -status | -ip | -rcport | -privkey
 # - dupmn any_command 3>&1 &>/dev/null => get a json instead (looot of work)
 #    + general      [1-3] (X)
 #    + load_profile [4-8] (X)
@@ -18,8 +18,8 @@
 #    + uninstall    [load_profile + select_dupe] (X)
 #    + bootstrap    [load_profile + select_dupe + 18-19] (X)
 #    + iplist       [none] ( )
-#    + ipadd        [using_ip + 20-24] ( )
-#    + ipdel        [using_ip + 20-23 + 25] ( )
+#    + ipadd        [using_ip + 20-25] ( )
+#    + ipdel        [using_ip + 20-25] ( )
 #    + rpcchange    [load_profile + select_dupe + ??] ( )
 #    + systemctlall [load_profile + ??] ( )
 #    + list         [none] ( )
@@ -154,7 +154,7 @@ function find_port() {
 		dup_ports="$dup_ports $(conf_get_value $COIN_FOLDER$i/$COIN_CONFIG rpcport) "
 	done
 	local port=$(port_check_loop $1 49151 "( $dup_ports )")
-	[[ "$port" ]] && echo $port || echo $(port_check_loop 1024 $1 "( $dup_ports )")
+	[[ $port ]] && echo $port || echo $(port_check_loop 1024 $1 "( $dup_ports )")
 }
 function is_number() {
 	# <$1 = number>
@@ -188,7 +188,7 @@ function configure_systemd() {
 
 	systemctl daemon-reload
 	if [[ $1 && $INSTALL_BOOTSTRAP ]]; then
-		if [[ ! $(wallet_loaded) || ($COIN_SERVICE && -f /etc/systemd/system/$COIN_SERVICE) ]]; then
+		if [[ ! $(wallet_cmd loaded) || ($COIN_SERVICE && -f /etc/systemd/system/$COIN_SERVICE) ]]; then
 			cmd_bootstrap 0 $1 3>/dev/null
 		elif [[ $DUP_COUNT -ge 2 && $1 -ge 2 ]]; then
 			echo -e "${MAGENTA}NOTE:${NC} Can't stop the main node, trying the bootstrap with the dupe ${CYAN}1${NC}"
@@ -201,7 +201,7 @@ function configure_systemd() {
 		fi
 	fi
 	[[ $1 ]] && systemctl start $service_name.service && sleep 1
-	systemctl enable $service_name.service > /dev/null 2>&1
+	systemctl enable $service_name.service &> /dev/null
 
 	if [[ $1 && ! "$(ps axo cmd:100 | egrep $service_name)" ]]; then
 		echo -e "\n${RED}IMPORTANT!!!${NC} \
@@ -214,19 +214,40 @@ function configure_systemd() {
 			\nThere's also the chance that this could be a false positive error (so actually everything is ok), anyway please use the commands above to investigate."
 	fi
 }
-function wallet_loaded() {
-	# [$1 = dup_number] | [$2 = wait_timeout]
+function wallet_cmd() {
+	# <$1 = start|stop> | <$2 = dup_number> # check $COIN_SERVICE exists before use start|stop & main MN is allowed
+	# <$1 = loaded> | [$2 = dup_number] | [$3 = wait_timeout]
 	exec 2> /dev/null
-	function check_wallet_response() {
-		[[ $(is_number $([[ $1 -gt 0 ]] && echo $($COIN_CLI-$(($1)) getblockcount) || echo $($EXEC_COIN_CLI getblockcount))) ]] && echo "1"
-	}
-	if [[ ! $2 ]]; then
-		check_wallet_response $1
-	else
-		for (( i=0; i<=$2; i++)); do
-			check_wallet_response $1 && break || sleep 1
+
+	function wallet_loaded() {
+		local timer=$([[ $2 ]] && echo $2 || echo 0)
+		for (( i=0; i<=$timer; i++ )); do
+			[[ $(is_number $($(exec_coin cli $1) getblockcount)) ]] && echo "1" && break
+			sleep 1
 		done
-	fi
+	}
+
+	local service=$([[ $2 -gt 0 ]] && echo "$COIN_NAME-$2.service" || echo "$COIN_SERVICE")
+
+	case "$1" in
+		"loaded")
+			wallet_loaded $2 $3
+			;;
+		"start")
+			if [[ ! $(wallet_loaded $2) ]]; then
+				systemctl start $service &> /dev/null
+				[[ $(wallet_loaded $2 30) ]] && echo "1"
+			fi
+			;;
+		"stop")
+			if [[ $(wallet_loaded $2) ]]; then
+				systemctl stop $service &> /dev/null
+				[[ $($(exec_coin cli $2) stop) ]] && sleep 3
+				echo "1"
+			fi
+			;;
+	esac
+
 	exec 2> /dev/tty
 }
 function exec_coin() {
@@ -257,7 +278,7 @@ function install_proc() {
 
 	if [[ ! $NEW_KEY ]]; then
 		for (( i=0; i<=$DUP_COUNT; i++ )); do
-			if [[ $(wallet_loaded $i) ]]; then
+			if [[ $(wallet_cmd loaded $i) ]]; then
 				NEW_KEY=$(try_cmd $(exec_coin cli $i) "createmasternodekey" "masternode genkey")
 				break
 			fi
@@ -269,7 +290,7 @@ function install_proc() {
 		NEW_RPC=$(find_port $(($([[ $NEW_RPC ]] && stoi $NEW_RPC || echo 1023)+1)))
 	fi
 
-	mkdir $new_folder > /dev/null 2>&1
+	mkdir $new_folder &> /dev/null
 	cp $COIN_FOLDER/$COIN_CONFIG $new_folder
 
 	local new_user=$(conf_get_value $COIN_FOLDER/$COIN_CONFIG "rpcuser")
@@ -298,7 +319,7 @@ function install_proc() {
 		echo -e "Couldn't find a opened ${BLUE}$COIN_NAME${NC} wallet opened to generate a private key, temporary opening the new wallet to generate a key"
 		$(conf_set_value $new_folder/$COIN_CONFIG "masternode"        "0"      1)
 		$COIN_DAEMON-$2 -daemon
-		wallet_loaded $2 30 > /dev/null
+		wallet_cmd loaded $2 30 > /dev/null
 		NEW_KEY=$(try_cmd $COIN_CLI-$2 "createmasternodekey" "masternode genkey")
 		$(conf_set_value $new_folder/$COIN_CONFIG "masternodeprivkey" $NEW_KEY 1)
 		$(conf_set_value $new_folder/$COIN_CONFIG "masternode"        "1"      1)
@@ -322,7 +343,8 @@ function make_chmod_file() {
 	chmod +x $1
 }
 function stoi() {
-	echo $1 | awk '{ printf "%d\n", $0 }'
+	# <$1 = number>
+	[[ $(is_number $1) ]] && echo $1 | awk '{ printf "%d\n", $0 }' || echo $1
 }
 function get_ips() {
 	# <$1 = 4 or 6> | [$2 = netmask] | [$3 = interface]
@@ -481,8 +503,8 @@ function cmd_install() {
 				$(conf_set_value $COIN_FOLDER/$COIN_CONFIG "bind" $main_ip 1)
 				if [[ $($EXEC_COIN_CLI stop 2> /dev/null) ]]; then
 					sleep 5
-					$EXEC_COIN_DAEMON -daemon > /dev/null 2>&1
-					wallet_loaded 0 20 > /dev/null
+					$EXEC_COIN_DAEMON -daemon &> /dev/null
+					wallet_cmd loaded 0 20 > /dev/null
 				fi
 			fi
 		fi
@@ -512,7 +534,7 @@ function cmd_install() {
 
 	local retcode=0
 	if [[ $IP ]]; then
-		for (( i=0; i<$DUP_COUNT; i++ )); do 
+		for (( i=0; i<$DUP_COUNT; i++ )); do
 			if [[ $i != $2 && $(conf_get_value $(get_folder $i)$COIN_CONFIG "bind") == "$IP" ]]; then
 				echo -e "${RED}WARNING:${NC} looks like that the ${BLUE}node $i${NC} already uses the same IP, it may cause that this dupe doesn't work"
 				((retcode+=1))
@@ -536,8 +558,7 @@ function cmd_reinstall() {
 		return
 	fi
 
-	systemctl stop $COIN_NAME-$2.service
-	[[ $(exec_coin cli $2 stop 2> /dev/null) ]] && sleep 3
+	wallet_cmd stop $2 > /dev/null
 	[[ ! $NEW_KEY ]] && NEW_KEY=$(conf_get_value $COIN_FOLDER$2/$COIN_CONFIG "masternodeprivkey")
 	rm -rf $COIN_FOLDER$2
 
@@ -557,8 +578,8 @@ function cmd_uninstall() {
 			echo -e "Uninstalling ${BLUE}$1${NC} instance ${CYAN}number $i${NC}"
 			rm -rf /usr/bin/$COIN_CLI-$i
 			rm -rf /usr/bin/$COIN_DAEMON-$i
-			systemctl stop $COIN_NAME-$i.service > /dev/null
-			systemctl disable $COIN_NAME-$i.service > /dev/null 2>&1
+			wallet_cmd stop $i > /dev/null
+			systemctl disable $COIN_NAME-$i.service &> /dev/null
 			rm -rf /etc/systemd/system/$COIN_NAME-$i.service
 			rm -rf $COIN_FOLDER$i
 		done
@@ -571,22 +592,22 @@ function cmd_uninstall() {
 		echo -e "Uninstalling ${BLUE}$1${NC} instance ${CYAN}number $2${NC}"
 		rm -rf /usr/bin/$COIN_CLI-$DUP_COUNT
 		rm -rf /usr/bin/$COIN_DAEMON-$DUP_COUNT
-		systemctl stop $COIN_NAME-$2.service
+		wallet_cmd stop $2
 		$(conf_set_value .dupmn/dupmn.conf $1 $(($DUP_COUNT-1)) 1)
 		$(make_chmod_file /usr/bin/$COIN_CLI-all "#!/bin/bash\nfor (( i=0; i<=$(($DUP_COUNT-1)); i++ )) do\n echo -e MN\$i:\n $COIN_CLI-\$i \$@\ndone")
 		$(make_chmod_file /usr/bin/$COIN_DAEMON-all "#!/bin/bash\nfor (( i=0; i<=$(($DUP_COUNT-1)); i++ )) do\n echo -e MN\$i:\n $COIN_DAEMON-\$i \$@\ndone")
 		rm -rf $COIN_FOLDER$2
 
 		for (( i=$2; i<=$DUP_COUNT; i++ )); do
-			systemctl stop $COIN_NAME-$i.service
+			wallet_cmd stop $i
 		done
 		for (( i=$2+1; i<=$DUP_COUNT; i++ )); do
 			echo -e "setting ${CYAN}instance $i${NC} as ${CYAN}instance $(($i-1))${NC}..."
 			mv $COIN_FOLDER$i $COIN_FOLDER$(($i-1))
-			systemctl start $COIN_NAME-$(($i-1)).service
+			wallet_cmd start $(($i-1)).service
 		done
 
-		systemctl disable $COIN_NAME-$DUP_COUNT.service > /dev/null 2>&1
+		systemctl disable $COIN_NAME-$DUP_COUNT.service &> /dev/null
 		rm -rf /etc/systemd/system/$COIN_NAME-$DUP_COUNT.service
 		systemctl daemon-reload
 		echo_json "{\"message\":\"dupe/s successfully uninstalled\",\"count\":1,\"dupes\":[$2]}"
@@ -602,7 +623,7 @@ function cmd_bootstrap() {
 		echo "You cannot use the same node for the chain copy... that doesn't makes sense"
 		echo_json "{\"error\":\"Cannot use the same node for the bootstrap\",\"errcode\":18}"
 		return
-	elif [[ ($1 -eq 0 || $2 -eq 0) && $(wallet_loaded) ]]; then 
+	elif [[ ($1 -eq 0 || $2 -eq 0) && $(wallet_cmd loaded) ]]; then 
 		if [[ ! $COIN_SERVICE || ! -f /etc/systemd/system/$COIN_SERVICE ]]; then
 			[[ ! $COIN_SERVICE ]] && echo -e "${MAGENTA}Main MN service not detected in the profile, can't temporary stop the main node to copy the chain.${NC}" || echo -e "${MAGENTA}Main MN service ($COIN_SERVICE) not found in /etc/systemd/system${NC}"			
 			echo -e "Main masternode must be stopped to copy the chain, use ${GREEN}$COIN_CLI stop${NC} to stop the main node."
@@ -613,34 +634,17 @@ function cmd_bootstrap() {
 		fi
 	fi
 
-	local orig_loaded=$(wallet_loaded $1)
-	local dest_loaded=$(wallet_loaded $2)
+	local orig_loaded=$(wallet_cmd stop $1)
+	local dest_loaded=$(wallet_cmd stop $2)
 
-	if [[ $orig_loaded ]]; then
-		systemctl stop $service_1
-		[[ $($(exec_coin cli $1) stop 2> /dev/null) ]] && sleep 3
-	fi
-	if [[ $dest_loaded ]]; then
-		systemctl stop $service_2
-		[[ $($(exec_coin cli $2) stop 2> /dev/null) ]] && sleep 3
-	fi
-
-	echo "Copying stored chain from node $1 to $2... (may take a while)"
+	echo -e "Copying stored chain from node $1 to $2... (may take a while)"
 	for x in $(ls $(get_folder $2) | grep -v ".conf\|wallet.dat"); do
 		rm -rf $(get_folder $2)$x
 	done
 	rsync -adm --ignore-existing --info=progress2 $(get_folder $1) $(get_folder $2)
 
-	if [[ $orig_loaded ]]; then
-		systemctl start $service_1
-		echo -e "Reactivating node $1..."
-		(wallet_loaded $1 20 > /dev/null)
-	fi
-	if [[ $dest_loaded ]]; then
-		systemctl start $service_2
-		echo -e "Reactivating node $2..."
-		(wallet_loaded $2 20 > /dev/null)
-	fi
+	[[ $orig_loaded ]] && echo -e "Reactivating node $1..." && wallet_cmd start $1 > /dev/null
+	[[ $dest_loaded ]] && echo -e "Reactivating node $2..." && wallet_cmd start $2 > /dev/null
 
 	echo_json "{\"message\":\"Bootstrap applied\",\"origin\":{\"node\":$1,\"reenabled\":$(json_bool $orig_loaded)},\"destiny\":{\"node\":$2,\"reenabled\":$(json_bool $dest_loaded)}}"
 }
@@ -691,7 +695,7 @@ function cmd_ipmod() {
 		return
 	elif [[ $1 == "del" && ! $(get_ips $IP_TYPE 0 $iface | grep "^$IP$") ]]; then
 		echo -e "${RED}ERROR:${NC} IP ${CYAN}$2${NC} doesn't exists in the interface ${GREEN}$iface${NC}"
-		# err 25
+		# err 24
 		return
 	fi
 
@@ -723,43 +727,51 @@ function cmd_ipmod() {
 		echo -e "IP ${CYAN}$2${NC}/${YELLOW}$netmask${NC} successfully $([[ $1 == "add" ]] && echo "added" || echo "deleted")" 
 	else
 		echo -e "${RED}UNEXPECTED ERROR:${NC} $ip_res"
-		# 23
+		# err 25
 	fi
 	#echo_json message, ip, ip_type, netmask, iface
 }
 function cmd_rpcchange() {
-	# <$1 = profile_name> | <$2 = instance_number> | [$3 = port_number]
+	# <$1 = instance_number> | [$2 = port_number]
 
-	local new_port=$(stoi $(conf_get_value $(get_folder $2)/$COIN_CONFIG "rpcport"))
+	local new_port=$(stoi $(conf_get_value $(get_folder $1)/$COIN_CONFIG "rpcport"))
 
-	if [[ ! $3 ]]; then
+	if [[ ! $2 ]]; then
 		echo -e "No port provided, the rpc port will be changed for any other free port..."
 		new_port=$(find_port $new_port)
-	elif [[ ! $(is_number $3) ]]; then
-		echo -e "${CYAN}$3${NC} is not a number"
+	elif [[ ! $(is_number $2) ]]; then
+		echo -e "${CYAN}$2${NC} is not a number"
+		# echo_json err
 		return
-	elif [[ $3 -lt 1024 || $3 -gt 49151 ]]; then
-		echo -e "${MAGENTA}$3${NC} is not a valid or a reserved port (must be between ${MAGENTA}1024${NC} and ${MAGENTA}49151${NC})"
+	elif [[ $2 -lt 1024 || $2 -gt 49151 ]]; then
+		echo -e "${MAGENTA}$2${NC} is not a valid or a reserved port (must be between ${MAGENTA}1024${NC} and ${MAGENTA}49151${NC})"
+		# echo_json err
 		return
 	else
-		new_port=$(stoi $3)
+		new_port=$(stoi $2)
 		if [[ ! $(port_check $new_port) ]]; then
 			echo -e "Port ${MAGENTA}$new_port${NC} seems to be in use by another process"
+			# echo_json err
 			return
 		fi
 	fi
 
-	$(conf_set_value $(get_folder $2)/$COIN_CONFIG "rpcport" $new_port 1)
-	systemctl stop $COIN_NAME-$2.service > /dev/null
-	systemctl start $COIN_NAME-$2.service
-
-	echo -e "${BLUE}$1${NC} instance ${CYAN}number $2${NC} is now listening the rpc port ${MAGENTA}$new_port${NC}"
+	if [[ $1 -eq 0 && (! $COIN_SERVICE || ! -f /etc/systemd/system/$COIN_SERVICE) && $(wallet_cmd loaded) ]]; then
+		echo -e "The ${BLUE}$PROFILE_NAME${NC} main node must be manually stopped to change the rpc port"
+		# echo_json warn
+	else
+		local wallet_loaded=$(wallet_cmd stop $1)
+		$(conf_set_value $(get_folder $1)/$COIN_CONFIG "rpcport" $new_port 1)
+		[[ $wallet_loaded ]] && wallet_cmd start $1 > /dev/null
+		echo -e "${BLUE}$PROFILE_NAME${NC} node ${CYAN}number $1${NC} is now listening the rpc port ${MAGENTA}$new_port${NC}"
+		# echo_json ok
+	fi
 }
 function cmd_systemctlall() {
 	# <$1 = profile_name> | <$2 = command>
 
 	trap '' 2
-	if [[ "$COIN_SERVICE" ]]; then
+	if [[ $COIN_SERVICE ]]; then
 		if [[ -f /etc/systemd/system/$COIN_SERVICE ]]; then
 			echo -e "${CYAN}systemctl $2 $COIN_SERVICE${NC}"
 			systemctl $2 $COIN_SERVICE
@@ -809,19 +821,19 @@ function cmd_swapfile() {
 	# <$1 = size_in_mbytes>
 
 	if [[ ! $(is_number $1) ]]; then
-		echo -e "${YELLOW}<size_in_mbytes>${NC} must be a number" 
+		echo -e "${YELLOW}<size_in_mbytes>${NC} must be a number"
 		exit
 	fi
 
 	local avail_mb=$(df / --output=avail -m | grep [0-9])
 	local total_mb=$(df / --output=size -m | grep [0-9])
 
-	if [[ $1 -ge $(($avail_mb)) ]]; then
-		echo -e "There's only $(($avail_mb)) MB available in the hard disk"
+	if [[ $1 -ge $avail_mb ]]; then
+		echo -e "There's only $avail_mb MB available in the hard disk"
 		exit
 	fi
 
-	[[ -f /mnt/dupmn_swapfile ]] && swapoff /mnt/dupmn_swapfile > /dev/null 2>&1
+	[[ -f /mnt/dupmn_swapfile ]] && swapoff /mnt/dupmn_swapfile &> /dev/null
 
 	if [[ $1 -eq 0 ]]; then
 		rm -rf /mnt/dupmn_swapfile
@@ -830,13 +842,13 @@ function cmd_swapfile() {
 	else
 		echo -e "Generating swapfile, this may take some time depending on the size..."
 		echo -e "$(($1 * 1024 * 1024)) bytes swapfile"
-		dd if=/dev/zero of=/mnt/dupmn_swapfile bs=1024 bs=1M count=$(($1)) status=progress
-		chmod 600 /mnt/dupmn_swapfile > /dev/null 2>&1
-		mkswap /mnt/dupmn_swapfile > /dev/null 2>&1
-		swapon /mnt/dupmn_swapfile > /dev/null 2>&1
-		/mnt/dupmn_swapfile swap swap defaults 0 0 > /dev/null 2>&1
+		dd if=/dev/zero of=/mnt/dupmn_swapfile bs=1024 bs=1M count=$1 status=progress
+		chmod 600 /mnt/dupmn_swapfile &> /dev/null
+		mkswap /mnt/dupmn_swapfile &> /dev/null
+		swapon /mnt/dupmn_swapfile &> /dev/null
+		/mnt/dupmn_swapfile swap swap defaults 0 0 &> /dev/null
 		[[ ! $(cat /etc/fstab | grep "/mnt/dupmn_swapfile") ]] && echo "/mnt/dupmn_swapfile none swap 0 0" >> /etc/fstab
-		echo -e "Swapfile new size = ${GREEN}$(($1)) MB${NC}"
+		echo -e "Swapfile new size = ${GREEN}$1 MB${NC}"
 	fi
 
 	echo -e "Use ${YELLOW}swapon -s${NC} to see the changes of your swapfile and ${YELLOW}free -m${NC} to see the total available memory"
@@ -1008,7 +1020,7 @@ function main() {
 	if [[ ! $1 ]]; then
 		echo -e "No command inserted, use ${YELLOW}dupmn help${NC} to see all the available commands"
 		echo_json "{\"error\":\"no command inserted\",\"errcode\":1}"
-		exit
+		return
 	fi
 
 	local curr_dir=$PWD
@@ -1067,8 +1079,8 @@ function main() {
 		"rpcchange")
 			exit_no_param "$3" "${YELLOW}dupmn rpcchange <prof_name> <node> [port]${NC} requires a profile name, node number and optionally a port number as parameters"
 			load_profile $2 1
-			instance_valid $3
-			cmd_rpcchange $2 $(stoi $3) $4
+			instance_valid $3 1
+			cmd_rpcchange $(stoi $3) $4
 			;;
 		"systemctlall")
 			exit_no_param "$3" "${YELLOW}dupmn systemctlall <prof_name> <command>${NC} requires a profile name and a command as parameters"
@@ -1081,7 +1093,7 @@ function main() {
 			;;
 		"swapfile")
 			exit_no_param "$2" "${YELLOW}dupmn swapfile <size_in_mbytes>${NC} requires a number as parameter"
-			cmd_swapfile $2
+			cmd_swapfile $(stoi $2)
 			;;
 		"checkmem")
 			cmd_checkmem
