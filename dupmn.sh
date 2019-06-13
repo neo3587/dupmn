@@ -26,10 +26,11 @@
 #    + list [param] [load_profile] ( )
 #    + swapfile     [??] ( )
 #    + help         [none] ( )
-#    + update       [none] ( )
+#    + update       [none] (X)
 #
 
 
+readonly GRAY='\e[1;30m'
 readonly RED='\e[1;31m'
 readonly GREEN='\e[1;32m'
 readonly YELLOW='\e[1;33m'
@@ -541,7 +542,7 @@ function cmd_install() {
 				break;
 			fi
 		done
-		if [[ ! $(echo get_ips 4 | grep -w $IP) && ! $(echo get_ips 6 | grep -w ${IP:1:-1}) ]]; then
+		if [[ ($IP_TYPE == 4 && ! $(get_ips 4 | grep -w $IP)) || ($IP_TYPE == 6 && ! $(get_ips 6 | grep -w ${IP:1:-1})) ]]; then
 			echo -e "${RED}WARNING:${NC} IP ${GREEN}$IP${NC} is probably not added, the node may not work due to using a non-existent IP"
 			((retcode+=2))
 		fi
@@ -903,26 +904,7 @@ function cmd_help() {
 			\n**NOTE 3**: Check ${CYAN}https://github.com/neo3587/dupmn/wiki/FAQs${NC} for technical questions and troubleshooting."
 }
 function cmd_update() {
-	echo -e "===================================================\
-			 \n   ██████╗ ██╗   ██╗██████╗ ███╗   ███╗███╗   ██╗  \
-			 \n   ██╔══██╗██║   ██║██╔══██╗████╗ ████║████╗  ██║  \
-			 \n   ██║  ██║██║   ██║██████╔╝██╔████╔██║██╔██╗ ██║  \
-			 \n   ██║  ██║██║   ██║██╔═══╝ ██║╚██╔╝██║██║╚██╗██║  \
-			 \n   ██████╔╝╚██████╔╝██║     ██║ ╚═╝ ██║██║ ╚████║  \
-			 \n   ╚═════╝  ╚═════╝ ╚═╝     ╚═╝     ╚═╝╚═╝  ╚═══╝  \
-			 \n                                ╗ made by neo3587 ╔\
-			 \n           Source: ${CYAN}https://github.com/neo3587/dupmn${NC}\
-			 \n   FAQs: ${CYAN}https://github.com/neo3587/dupmn/wiki/FAQs${NC}\
-			 \n  BTC Donations: ${YELLOW}3F6J19DmD5jowwwQbE9zxXoguGPVR716a7${NC}\
-			 \n==================================================="
-	dupmn_update=$(curl -s https://raw.githubusercontent.com/neo3587/dupmn/master/dupmn.sh)
-	if [[ -f /usr/bin/dupmn && ! $(diff -q <(echo "$dupmn_update") /usr/bin/dupmn) ]]; then
-		echo -e "\n${GREEN}dupmn${NC} is already updated to the last version\n"
-	else
-		echo "$dupmn_update" > /usr/bin/dupmn
-		chmod +x /usr/bin/dupmn
-		echo -e "\n${GREEN}dupmn${NC} updated to the last version, pretty fast, right?\n"
-	fi
+	curl -sL https://raw.githubusercontent.com/neo3587/dupmn/master/dupmn_install.sh | sudo -E bash -
 	exit
 }
 
@@ -941,7 +923,7 @@ function main() {
 			echo_json "{\"error\":\"main node reference not allowed\",\"errcode\":10}"
 			exit
 		elif [[ $1 -gt $DUP_COUNT ]]; then
-			echo -e "Instance ${CYAN}$(($1))${NC} doesn't exists, there are only ${CYAN}$DUP_COUNT${NC} instances of ${BLUE}$PROFILE_NAME${NC}"
+			echo -e "Instance ${CYAN}$(stoi $1)${NC} doesn't exists, there are only ${CYAN}$DUP_COUNT${NC} instances of ${BLUE}$PROFILE_NAME${NC}"
 			echo_json "{\"error\":\"not existing dupe\",\"errcode\":11}"
 			exit
 		fi
@@ -1012,7 +994,7 @@ function main() {
 		# <$1 = param> | <$2 = message>
 		if [[ ! $1 ]]; then
 			echo -e "$2"
-			echo_json "{\"error\":\"$(echo "$2" | sed 's/\x1b\[[0-9;]*m//g')\",\"errcode\":3}"
+			echo_json "{\"error\":\"$(echo "$2" | sed 's/\\e\[[0-9;]*m//g')\",\"errcode\":3}"
 			exit
 		fi
 	}
