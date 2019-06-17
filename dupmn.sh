@@ -4,7 +4,7 @@
 # Source: https://github.com/neo3587/dupmn
 
 # TODO:
-# - dupmn list [profile] => rm online & status: {RED}(disabled){NC}
+# - dupmn reinstall => allow main node
 # - dupmn list [profile|param] => param: -status | -ip | -rcport | -privkey
 # - dupmn any_command 3>&1 &>/dev/null => get a json instead (looot of work)
 #    + general      [1-3] (X)
@@ -31,11 +31,17 @@
 
 
 readonly GRAY='\e[1;30m'
+readonly DARKRED='\e[0;31m'
 readonly RED='\e[1;31m'
+readonly DARKGREEN='\e[0;32m'
 readonly GREEN='\e[1;32m'
+readonly DARKYELLOW='\e[0;33m'
 readonly YELLOW='\e[1;33m'
+readonly DARKBLUE='\e[0;34m'
 readonly BLUE='\e[1;34m'
+readonly DARKMAGENTA='\e[0;35m'
 readonly MAGENTA='\e[1;35m'
+readonly DARKCYAN='\e[0;36m'
 readonly CYAN='\e[1;36m'
 readonly UNDERLINE='\e[1;4m'
 readonly NC='\e[0m'
@@ -577,9 +583,9 @@ function cmd_uninstall() {
 	if [ $2 == "all" ]; then
 		for (( i=$DUP_COUNT; i>=1; i-- )); do
 			echo -e "Uninstalling ${BLUE}$1${NC} instance ${CYAN}number $i${NC}"
+			wallet_cmd stop $i > /dev/null
 			rm -rf /usr/bin/$COIN_CLI-$i
 			rm -rf /usr/bin/$COIN_DAEMON-$i
-			wallet_cmd stop $i > /dev/null
 			systemctl disable $COIN_NAME-$i.service &> /dev/null
 			rm -rf /etc/systemd/system/$COIN_NAME-$i.service
 			rm -rf $COIN_FOLDER$i
@@ -591,21 +597,21 @@ function cmd_uninstall() {
 		echo_json "{\"message\":\"dupe/s successfully uninstalled\",\"count\":$DUP_COUNT,\"dupes\":[$(seq -s ',' 1 $DUP_COUNT)]}"
 	else
 		echo -e "Uninstalling ${BLUE}$1${NC} instance ${CYAN}number $2${NC}"
+		wallet_cmd stop $2 > /dev/null
 		rm -rf /usr/bin/$COIN_CLI-$DUP_COUNT
 		rm -rf /usr/bin/$COIN_DAEMON-$DUP_COUNT
-		wallet_cmd stop $2
 		$(conf_set_value .dupmn/dupmn.conf $1 $(($DUP_COUNT-1)) 1)
-		$(make_chmod_file /usr/bin/$COIN_CLI-all "#!/bin/bash\nfor (( i=0; i<=$(($DUP_COUNT-1)); i++ )) do\n echo -e MN\$i:\n $COIN_CLI-\$i \$@\ndone")
+		$(make_chmod_file /usr/bin/$COIN_CLI-all    "#!/bin/bash\nfor (( i=0; i<=$(($DUP_COUNT-1)); i++ )) do\n echo -e MN\$i:\n $COIN_CLI-\$i \$@\ndone")
 		$(make_chmod_file /usr/bin/$COIN_DAEMON-all "#!/bin/bash\nfor (( i=0; i<=$(($DUP_COUNT-1)); i++ )) do\n echo -e MN\$i:\n $COIN_DAEMON-\$i \$@\ndone")
 		rm -rf $COIN_FOLDER$2
 
 		for (( i=$2; i<=$DUP_COUNT; i++ )); do
-			wallet_cmd stop $i
+			wallet_cmd stop $i > /dev/null
 		done
 		for (( i=$2+1; i<=$DUP_COUNT; i++ )); do
 			echo -e "setting ${CYAN}instance $i${NC} as ${CYAN}instance $(($i-1))${NC}..."
 			mv $COIN_FOLDER$i $COIN_FOLDER$(($i-1))
-			wallet_cmd start $(($i-1)).service
+			wallet_cmd start $(($i-1)) > /dev/null
 		done
 
 		systemctl disable $COIN_NAME-$DUP_COUNT.service &> /dev/null
@@ -805,8 +811,7 @@ function cmd_list() {
 		function print_dup_info() {
 			local dup_ip=$(conf_get_value $COIN_FOLDER$1/$COIN_CONFIG "masternodeaddr")
 			local mnstatus=$(try_cmd $(exec_coin cli $1) "masternodedebug" "masternode debug")
-			echo -e  "  online  : $([[ $mnstatus ]] && echo ${BLUE}true${NC} || echo ${RED}false${NC})\
-					$([[ $mnstatus ]] && echo "\n  status  : "${mnstatus//[$'\r\n']})\
+			echo -e  "  status  : $([[ $mnstatus ]] && echo ${mnstatus//[$'\r\n']} || echo ${RED}\(disabled\)${NC})\
 					\n  ip      : ${YELLOW}$([[ ! $dup_ip ]] && echo $(conf_get_value $COIN_FOLDER$1/$COIN_CONFIG "externalip") || echo "$dup_ip")${NC}\
 					\n  rpcport : ${MAGENTA}$(conf_get_value $COIN_FOLDER$1/$COIN_CONFIG rpcport)${NC}\
 					\n  privkey : ${GREEN}$(conf_get_value $COIN_FOLDER$1/$COIN_CONFIG masternodeprivkey)${NC}"
@@ -814,7 +819,7 @@ function cmd_list() {
 		echo -e "${BLUE}$1${NC}: ${CYAN}$DUP_COUNT${NC} created nodes with dupmn"
 		echo -e "Main Node:\n$(print_dup_info)"
 		for (( i=1; i<=$DUP_COUNT; i++ )); do
-			echo -e "MN$i:\n$(print_dup_info $i)"
+			echo -e "${DARKCYAN}MN$i:${NC}\n$(print_dup_info $i)"
 		done
 	fi
 }
@@ -904,7 +909,7 @@ function cmd_help() {
 			\n**NOTE 3**: Check ${CYAN}https://github.com/neo3587/dupmn/wiki/FAQs${NC} for technical questions and troubleshooting."
 }
 function cmd_update() {
-	curl -sL https://raw.githubusercontent.com/neo3587/dupmn/master/dupmn_install.sh | sudo -E bash -
+	curl -sL https://raw.githubusercontent.com/neo3587/dupmn/master/dupmn_install.sh 3>&3 | bash
 	exit
 }
 
