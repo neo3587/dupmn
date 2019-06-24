@@ -4,8 +4,8 @@
 # Source: https://github.com/neo3587/dupmn
 
 # TODO:
-# - dupmn reinstall => allow main node
-# - dupmn list [profile|param] => param: -status | -ip | -rcport | -privkey
+# - dupmn reinstall => allow main node ??
+# - dupmn list [profile|param] => param: -online | -blockcount | -status | -ip | -rcport | -privkey (default: -status -ip -rcport -privkey)
 # - dupmn any_command 3>&1 &>/dev/null => get a json instead (looot of work)
 #    + general      [1-3] (X)
 #    + load_profile [4-8] (X)
@@ -17,15 +17,15 @@
 #    + reinstall    [install] (X)
 #    + uninstall    [load_profile + select_dupe] (X)
 #    + bootstrap    [load_profile + select_dupe + 18-19] (X)
-#    + iplist       [none] ( )
+#    + iplist       [none] (X)
 #    + ipadd        [using_ip + 20-25] ( )
 #    + ipdel        [using_ip + 20-25] ( )
 #    + rpcchange    [load_profile + select_dupe + ??] ( )
 #    + systemctlall [load_profile + ??] ( )
 #    + list         [none] ( )
-#    + list [param] [load_profile] ( )
-#    + swapfile     [??] ( )
-#    + help         [none] ( )
+#    + list [prof]  [load_profile] ( )
+#    + swapfile     [none] ( )
+#    + help         [none] (?)
 #    + update       [none] (X)
 #
 
@@ -71,6 +71,12 @@ function echo_json() {
 }
 function json_bool() {
 	[[ $1 ]] && echo true || echo false
+}
+function array_join() {
+	# <$1 = delimiter> | <$2* = params>
+	local IFS="$1"
+	shift
+	echo "$*"
 }
 function load_profile() {
 	# <$1 = profile_name> | [$2 = check_exec]
@@ -405,6 +411,10 @@ function cmd_profadd() {
 		echo -e "From the infinite amount of possible names for the profile and you had to choose the only one that you can't use... for god sake..."
 		echo_json "{\"error\":\"reserved profile name\",\"errcode\":16}"
 		return
+	elif [[ ${prof_name:0:1} == "-" ]]; then
+		echo -e "Profile name cannot start with a dash ${RED}-${NC} character"
+		echo_json "{\"error\":\"reserved profile name\",\"errcode\":16}"
+		return
 	fi
 
 	[[ ! -d ".dupmn" ]] && mkdir ".dupmn"
@@ -656,16 +666,19 @@ function cmd_bootstrap() {
 	echo_json "{\"message\":\"Bootstrap applied\",\"origin\":{\"node\":$1,\"reenabled\":$(json_bool $orig_loaded)},\"destiny\":{\"node\":$2,\"reenabled\":$(json_bool $dest_loaded)}}"
 }
 function cmd_iplist() {
+	local ipjs=()
 	for iface in $(ls /sys/class/net | grep -v "lo"); do
 		echo -e "Interface ${GREEN}$iface${NC}:"
 		for ip in $(get_ips 4 1 $iface); do
 			echo -e "  ${YELLOW}$ip${NC}"
+			ipjs+=("{\"iface\":\"$iface\",\"ip\":\"$(echo $ip | cut -d / -f1)\",\"netmask\":$(echo $ip | cut -d / -f2),\"type\":4}")
 		done
 		for ip in $(get_ips 6 1 $iface); do
 			echo -e "  ${CYAN}$ip${NC}"
+			ipjs+=("{\"iface\":\"$iface\",\"ip\":\"$(echo $ip | cut -d / -f1)\",\"netmask\":$(echo $ip | cut -d / -f2),\"type\":6}")
 		done
 	done
-	# { "list": [ { "iface": $iface, "ip": "$ip | cut -d / -f1", "netmask": $ip | cut -d / -f2, "type": 4 or 6 },...]}
+	echo_json "{\"list\":[$(array_join , ${ipjs[@]})]}"
 }
 function cmd_ipmod() {
 	# <$1 = add|del> | <$2 = ip> | <$3 = netmask> | [$4 = interface]
@@ -811,13 +824,13 @@ function cmd_list() {
 		function print_dup_info() {
 			local dup_ip=$(conf_get_value $COIN_FOLDER$1/$COIN_CONFIG "masternodeaddr")
 			local mnstatus=$(try_cmd $(exec_coin cli $1) "masternodedebug" "masternode debug")
-			echo -e  "  status  : $([[ $mnstatus ]] && echo ${mnstatus//[$'\r\n']} || echo ${RED}\(disabled\)${NC})\
+			echo -e  "  status  : $([[ $mnstatus ]] && echo ${GRAY}${mnstatus//[$'\r\n']}${NC} || echo ${RED}\(disabled\)${NC})\
 					\n  ip      : ${YELLOW}$([[ ! $dup_ip ]] && echo $(conf_get_value $COIN_FOLDER$1/$COIN_CONFIG "externalip") || echo "$dup_ip")${NC}\
 					\n  rpcport : ${MAGENTA}$(conf_get_value $COIN_FOLDER$1/$COIN_CONFIG rpcport)${NC}\
 					\n  privkey : ${GREEN}$(conf_get_value $COIN_FOLDER$1/$COIN_CONFIG masternodeprivkey)${NC}"
 		}
 		echo -e "${BLUE}$1${NC}: ${CYAN}$DUP_COUNT${NC} created nodes with dupmn"
-		echo -e "Main Node:\n$(print_dup_info)"
+		echo -e "${DARKCYAN}Main Node:${NC}\n$(print_dup_info)"
 		for (( i=1; i<=$DUP_COUNT; i++ )); do
 			echo -e "${DARKCYAN}MN$i:${NC}\n$(print_dup_info $i)"
 		done
@@ -828,7 +841,7 @@ function cmd_swapfile() {
 
 	if [[ ! $(is_number $1) ]]; then
 		echo -e "${YELLOW}<size_in_mbytes>${NC} must be a number"
-		exit
+		return
 	fi
 
 	local avail_mb=$(df / --output=avail -m | grep [0-9])
@@ -836,7 +849,7 @@ function cmd_swapfile() {
 
 	if [[ $1 -ge $avail_mb ]]; then
 		echo -e "There's only $avail_mb MB available in the hard disk"
-		exit
+		return
 	fi
 
 	[[ -f /mnt/dupmn_swapfile ]] && swapoff /mnt/dupmn_swapfile &> /dev/null
