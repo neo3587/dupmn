@@ -5,7 +5,8 @@
 
 # TODO:
 # - dupmn reinstall => allow main node ??
-# - dupmn list [profile|param] => param: -online | -blockcount | -status | -ip | -rcport | -privkey (default: -status -ip -rcport -privkey)
+# - dupmn list [profile|param] => param: -a, -all | -o, -online | -b, --blockcount | -s --status | -i, --ip | -r, --rcport | -p, --privkey || (default: -sirp)
+# - dupmn install <profile> [params] => change format (-b -i IP -p PRIVKEY -r RPC || --bootstrap --ip=IP -privkey=PRIVKEY -rpcport=RPC) ??
 # - dupmn any_command 3>&1 &>/dev/null => get a json instead (looot of work)
 #    + general      [1-3] (X)
 #    + load_profile [4-8] (X)
@@ -23,7 +24,7 @@
 #    + rpcchange    [load_profile + select_dupe + ??] ( )
 #    + systemctlall [load_profile + ??] ( )
 #    + list         [none] ( )
-#    + list [prof]  [load_profile] ( )
+#    + list [prof]  [load_profile ?] ( )
 #    + swapfile     [none] ( )
 #    + help         [none] (?)
 #    + update       [none] (X)
@@ -808,7 +809,16 @@ function cmd_systemctlall() {
 	trap 2
 }
 function cmd_list() {
-	# [$1 = profile_name]
+	# [$1* = profile_name]
+
+	function print_dup_info() {
+		local dup_ip=$(conf_get_value $COIN_FOLDER$1/$COIN_CONFIG "masternodeaddr")
+		local mnstatus=$(try_cmd $(exec_coin cli $1) "masternodedebug" "masternode debug")
+		echo -e  "  status  : $([[ $mnstatus ]] && echo ${GRAY}${mnstatus//[$'\r\n']}${NC} || echo ${RED}\(disabled\)${NC})\
+				\n  ip      : ${YELLOW}$([[ ! $dup_ip ]] && echo $(conf_get_value $COIN_FOLDER$1/$COIN_CONFIG "externalip") || echo "$dup_ip")${NC}\
+				\n  rpcport : ${MAGENTA}$(conf_get_value $COIN_FOLDER$1/$COIN_CONFIG rpcport)${NC}\
+				\n  privkey : ${GREEN}$(conf_get_value $COIN_FOLDER$1/$COIN_CONFIG masternodeprivkey)${NC}"
+	}
 
 	if [[ ! $1 ]]; then
 		local -A conf=$(get_conf .dupmn/dupmn.conf)
@@ -821,18 +831,19 @@ function cmd_list() {
 			echo -e "Total count : $(echo ${conf[@]} | tr ' ' '\n' | cut -d '=' -f2 | awk '{ SUM += $1 } END { print SUM }') dupes + $(echo ${#conf[@]}) main nodes"
 		fi
 	else
-		function print_dup_info() {
-			local dup_ip=$(conf_get_value $COIN_FOLDER$1/$COIN_CONFIG "masternodeaddr")
-			local mnstatus=$(try_cmd $(exec_coin cli $1) "masternodedebug" "masternode debug")
-			echo -e  "  status  : $([[ $mnstatus ]] && echo ${GRAY}${mnstatus//[$'\r\n']}${NC} || echo ${RED}\(disabled\)${NC})\
-					\n  ip      : ${YELLOW}$([[ ! $dup_ip ]] && echo $(conf_get_value $COIN_FOLDER$1/$COIN_CONFIG "externalip") || echo "$dup_ip")${NC}\
-					\n  rpcport : ${MAGENTA}$(conf_get_value $COIN_FOLDER$1/$COIN_CONFIG rpcport)${NC}\
-					\n  privkey : ${GREEN}$(conf_get_value $COIN_FOLDER$1/$COIN_CONFIG masternodeprivkey)${NC}"
-		}
-		echo -e "${BLUE}$1${NC}: ${CYAN}$DUP_COUNT${NC} created nodes with dupmn"
-		echo -e "${DARKCYAN}Main Node:${NC}\n$(print_dup_info)"
-		for (( i=1; i<=$DUP_COUNT; i++ )); do
-			echo -e "${DARKCYAN}MN$i:${NC}\n$(print_dup_info $i)"
+		for arg in $@; do
+			local check_prof=$(load_profile $arg 1)
+			if [[ $check_prof ]]; then
+				echo -e "$check_prof"
+			else
+				load_profile $arg 1
+				echo -e "${BLUE}$arg${NC}: ${CYAN}$DUP_COUNT${NC} created nodes with dupmn"
+				echo -e "${DARKCYAN}Main Node:${NC}\n$(print_dup_info)"
+				for (( i=1; i<=$DUP_COUNT; i++ )); do
+					echo -e "${DARKCYAN}MN$i:${NC}\n$(print_dup_info $i)"
+				done
+			fi
+			[[ "$#" -gt 1 ]] && echo -e ""
 		done
 	fi
 }
@@ -913,7 +924,7 @@ function cmd_help() {
 			\n  - ${YELLOW}dupmn ipdel <ip> <netmask> [interface]         ${NC}Deletes an already recognized IPv4 or IPv6.\
 			\n  - ${YELLOW}dupmn rpcchange <prof_name> <node> [port]      ${NC}Changes the RPC port used from the given node with the new one (or finds a new one by itself if no port is given).\
 			\n  - ${YELLOW}dupmn systemctlall <prof_name> <command>       ${NC}Applies the systemctl command to all the duplicated instances of the given profile name.\
-			\n  - ${YELLOW}dupmn list [prof_name]                         ${NC}Shows the amount of duplicated instances of every masternode, if a profile name is provided, it lists an extended info of the profile instances.\
+			\n  - ${YELLOW}dupmn list [prof_names...]                     ${NC}Shows the amount of duplicated instances of every masternode, if a profile name/s are provided, it lists an extended info of the profile/s instances.\
 			\n  - ${YELLOW}dupmn checkmem                                 ${NC}Shows the memory usage (%) of every group of nodes.\
 			\n  - ${YELLOW}dupmn swapfile <size_in_mbytes>                ${NC}Creates, changes or deletes (if parameter is ${CYAN}0${NC}) a swapfile of the given size in MB to increase the virtual memory.\
 			\n  - ${YELLOW}dupmn update                                   ${NC}Checks the last version of the script and updates it if necessary.\
@@ -1088,8 +1099,7 @@ function main() {
 			cmd_systemctlall $2 $3
 			;;
 		"list")
-			[[ $2 ]] && load_profile $2 1
-			cmd_list $2
+			cmd_list ${@:2}
 			;;
 		"swapfile")
 			exit_no_param "$2" "${YELLOW}dupmn swapfile <size_in_mbytes>${NC} requires a number as parameter"
