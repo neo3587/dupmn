@@ -44,7 +44,7 @@ Check the [Usage example](#usage-example) to see the guide of the steps to follo
 - [`dupmn rpcchange <profile_name> <node> [port]`](https://github.com/neo3587/dupmn/wiki/Commands#rpcchange) : Changes the rpc port of the given node number, this is only in case that by chance it causes a conflict with another application that uses the same port (if no port is provided, it will automatically find any free port).
 - [`dupmn systemctlall <profile_name> <command>`](https://github.com/neo3587/dupmn/wiki/Commands#systemctlall) : Applies the systemctl command to all services created with the given profile (will only affect the main node too if the profile haves the COIN_SERVICE parameter).
 - [`dupmn list [profile_names...] [params...]`](https://github.com/neo3587/dupmn/wiki/Commands#list) : Shows the amount of duplicated instances of every masternode, if a profile name/s are provided, it lists an extended info of the profile/s instances. Optional `[params...]` list:  
-`-a`, `--all` : Use all the available params below. 
+`-a`, `--all` : Use all the available params below.  
 `-o`, `--online` : Show if the node is active or not.  
 `-b`, `--blockcount` : Show the current block number.  
 `-s`, `--status` : Show the masternode status message.  
