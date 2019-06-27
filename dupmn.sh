@@ -5,8 +5,6 @@
 
 # TODO:
 # - dupmn reinstall => allow main node ??
-# - dupmn list [profile|param] => param: -a, -all | -o, -online | -b, --blockcount | -s --status | -i, --ip | -r, --rcport | -p, --privkey || (default: -sirp)
-# - dupmn install <profile> [params] => change format (-b -i IP -p PRIVKEY -r RPC || --bootstrap --ip=IP -privkey=PRIVKEY -rpcport=RPC) ??
 # - dupmn any_command 3>&1 &>/dev/null => get a json instead (looot of work)
 #    + general      [1-3] (X)
 #    + load_profile [4-8] (X)
@@ -814,36 +812,62 @@ function cmd_list() {
 	function print_dup_info() {
 		local dup_ip=$(conf_get_value $COIN_FOLDER$1/$COIN_CONFIG "masternodeaddr")
 		local mnstatus=$(try_cmd $(exec_coin cli $1) "masternodedebug" "masternode debug")
-		echo -e  "  status  : $([[ $mnstatus ]] && echo ${GRAY}${mnstatus//[$'\r\n']}${NC} || echo ${RED}\(disabled\)${NC})\
-				\n  ip      : ${YELLOW}$([[ ! $dup_ip ]] && echo $(conf_get_value $COIN_FOLDER$1/$COIN_CONFIG "externalip") || echo "$dup_ip")${NC}\
-				\n  rpcport : ${MAGENTA}$(conf_get_value $COIN_FOLDER$1/$COIN_CONFIG rpcport)${NC}\
-				\n  privkey : ${GREEN}$(conf_get_value $COIN_FOLDER$1/$COIN_CONFIG masternodeprivkey)${NC}"
+		[[ ${args[@]} =~ "o" ]] && echo -e "  online  : $([[ $mnstatus ]] && echo ${BLUE}true${NC} || echo ${RED}false${NC})"
+		[[ ${args[@]} =~ "b" ]] && echo -e "  block   : $($(exec_coin cli $1) getblockcount)"
+		[[ ${args[@]} =~ "s" ]] && echo -e "  status  : $([[ $mnstatus ]] && echo ${GRAY}${mnstatus//[$'\r\n']}${NC} || echo ${RED}\(disabled\)${NC})"
+		[[ ${args[@]} =~ "i" ]] && echo -e "  ip      : ${YELLOW}$([[ ! $dup_ip ]] && echo $(conf_get_value $COIN_FOLDER$1/$COIN_CONFIG "externalip") || echo "$dup_ip")${NC}"
+		[[ ${args[@]} =~ "r" ]] && echo -e "  rpcport : ${MAGENTA}$(conf_get_value $COIN_FOLDER$1/$COIN_CONFIG rpcport)${NC}"
+		[[ ${args[@]} =~ "p" ]] && echo -e "  privkey : ${GREEN}$(conf_get_value $COIN_FOLDER$1/$COIN_CONFIG masternodeprivkey)${NC}"
 	}
 
+	local -A conf=$(get_conf .dupmn/dupmn.conf)
+	if [ ${#conf[@]} -eq 0 ]; then
+		echo -e "(no profiles added)"
+		return
+	fi
+
 	if [[ ! $1 ]]; then
-		local -A conf=$(get_conf .dupmn/dupmn.conf)
-		if [ ${#conf[@]} -eq 0 ]; then
-			echo -e "(no profiles added)"
-		else
-			for var in "${!conf[@]}"; do
-				echo -e "${CYAN}$var${NC} : ${conf[$var]}"
-			done
-			echo -e "Total count : $(echo ${conf[@]} | tr ' ' '\n' | cut -d '=' -f2 | awk '{ SUM += $1 } END { print SUM }') dupes + $(echo ${#conf[@]}) main nodes"
-		fi
+		for var in "${!conf[@]}"; do
+			echo -e "${CYAN}$var${NC} : ${conf[$var]}"
+		done
+		echo -e "Total count : $(echo ${conf[@]} | tr ' ' '\n' | cut -d '=' -f2 | awk '{ SUM += $1 } END { print SUM }') dupes (+ $(echo ${#conf[@]}) main nodes)"
 	else
-		for arg in $@; do
-			local check_prof=$(load_profile $arg 1)
+		local args=()
+		local params=$(echo "$@" | tr ' ' '\n' | grep '^-' | sed 's/^-//g')
+		params+=" $(echo "$params" | grep -v '^-' | grep -o '.')"
+
+		for param in $params; do
+			case "$param" in
+				"a"|"-all")
+					args=(o b s i r p)
+					break
+					;;
+				"o"|"-online")     args+=(o) ;;
+				"b"|"-blockcount") args+=(b) ;;
+				"s"|"-status")     args+=(s) ;;
+				"i"|"-ip")         args+=(i) ;;
+				"r"|"-rpcport")    args+=(r) ;;
+				"p"|"-privkey")    args+=(p) ;;
+			esac
+		done
+
+		local profs=$(echo "$@" | tr ' ' '\n' | sed '/^-/d')
+		[[ ! $profs ]] && profs="${!conf[@]}"
+		[[ ${#args[@]} -eq 0 ]] && args=(s i r p)
+
+		for prof in $profs; do
+			local check_prof=$(load_profile $prof 1)
 			if [[ $check_prof ]]; then
 				echo -e "$check_prof"
 			else
-				load_profile $arg 1
-				echo -e "${BLUE}$arg${NC}: ${CYAN}$DUP_COUNT${NC} created nodes with dupmn"
+				load_profile $prof 1
+				echo -e "${BLUE}$prof${NC}: ${CYAN}$DUP_COUNT${NC} created nodes with dupmn"
 				echo -e "${DARKCYAN}Main Node:${NC}\n$(print_dup_info)"
 				for (( i=1; i<=$DUP_COUNT; i++ )); do
 					echo -e "${DARKCYAN}MN$i:${NC}\n$(print_dup_info $i)"
 				done
 			fi
-			[[ "$#" -gt 1 ]] && echo -e ""
+			[[ $(echo "$profs" | grep -o ' ' | wc -l) -gt 1 ]] && echo -e ""
 		done
 	fi
 }
@@ -906,17 +930,17 @@ function cmd_help() {
 			\n  - ${YELLOW}dupmn profadd <prof_file> [prof_name]          ${NC}Adds a profile that will be used to create duplicates of the masternode, it will use the COIN_NAME parameter as name if a prof_name is not provided.\
 			\n  - ${YELLOW}dupmn profdel <prof_name>                      ${NC}Deletes the given profile name, this will uninstall too any dupe that uses this profile.\
 			\n  - ${YELLOW}dupmn install <prof_name> [params...]          ${NC}Install a new dupe based on the parameters of the given profile name.\
-			\n      ${YELLOW}[params]${NC} list:\
-			\n        ${GREEN}-ip=${NC}IP               Use a specific IPv4 or IPv6.\
-			\n        ${GREEN}-rpcport=${NC}PORT        Use a specific port for RPC commands (must be valid and not in use).\
-			\n        ${GREEN}-privkey=${NC}PRIVATEKEY  Set a user-defined masternode private key.\
-			\n        ${GREEN}-bootstrap${NC}           Apply a bootstrap during the installation.\
+			\n      ${YELLOW}[params...]${NC} list:\
+			\n        ${GREEN}--ip=${NC}IP               Use a specific IPv4 or IPv6.\
+			\n        ${GREEN}--rpcport=${NC}PORT        Use a specific port for RPC commands (must be valid and not in use).\
+			\n        ${GREEN}--privkey=${NC}PRIVATEKEY  Set a user-defined masternode private key.\
+			\n        ${GREEN}--bootstrap${NC}           Apply a bootstrap during the installation.\
 			\n  - ${YELLOW}dupmn reinstall <prof_name> <node> [params...] ${NC}Reinstalls the specified dupe, this is just in case if the dupe is giving problems.\
-			\n      ${YELLOW}[params]${NC} list:\
-			\n        ${GREEN}-ip=${NC}IP               Use a specific IPv4 or IPv6.\
-			\n        ${GREEN}-rpcport=${NC}PORT        Use a specific port for RPC commands (must be valid and not in use).\
-			\n        ${GREEN}-privkey=${NC}PRIVATEKEY  Set a user-defined masternode private key.\
-			\n        ${GREEN}-bootstrap${NC}           Apply a bootstrap during the reinstallation.\
+			\n      ${YELLOW}[params...]${NC} list:\
+			\n        ${GREEN}--ip=${NC}IP               Use a specific IPv4 or IPv6.\
+			\n        ${GREEN}--rpcport=${NC}PORT        Use a specific port for RPC commands (must be valid and not in use).\
+			\n        ${GREEN}--privkey=${NC}PRIVATEKEY  Set a user-defined masternode private key.\
+			\n        ${GREEN}--bootstrap${NC}           Apply a bootstrap during the reinstallation.\
 			\n  - ${YELLOW}dupmn uninstall <prof_name> <node|all>         ${NC}Uninstall the specified node of the given profile name, you can put ${YELLOW}all${NC} instead of a node number to uninstall all the duplicated instances.\
 			\n  - ${YELLOW}dupmn bootstrap <prof_name> <node_1> <node_2>  ${NC}Copies the chain from node_1 to node_2.\
 			\n  - ${YELLOW}dupmn iplist                                   ${NC}Shows all your configurated IPv4 and IPv6.\
@@ -924,7 +948,15 @@ function cmd_help() {
 			\n  - ${YELLOW}dupmn ipdel <ip> <netmask> [interface]         ${NC}Deletes an already recognized IPv4 or IPv6.\
 			\n  - ${YELLOW}dupmn rpcchange <prof_name> <node> [port]      ${NC}Changes the RPC port used from the given node with the new one (or finds a new one by itself if no port is given).\
 			\n  - ${YELLOW}dupmn systemctlall <prof_name> <command>       ${NC}Applies the systemctl command to all the duplicated instances of the given profile name.\
-			\n  - ${YELLOW}dupmn list [prof_names...]                     ${NC}Shows the amount of duplicated instances of every masternode, if a profile name/s are provided, it lists an extended info of the profile/s instances.\
+			\n  - ${YELLOW}dupmn list [prof_names...] [params...]         ${NC}Shows the amount of duplicated instances of every masternode, if a profile name/s are provided, it lists an extended info of the profile/s instances.\
+			\n      ${YELLOW}[params...]${NC} list:\
+			\n        ${GREEN}-a${NC}, ${GREEN}--all${NC}             Use all the available params below.\
+			\n        ${GREEN}-o${NC}, ${GREEN}--online${NC}          Show if the node is active or not.\
+			\n        ${GREEN}-b${NC}, ${GREEN}--blockcount${NC}      Show the current block number.\
+			\n        ${GREEN}-s${NC}, ${GREEN}--status${NC}          Show the masternode status message.\
+			\n        ${GREEN}-i${NC}, ${GREEN}--ip${NC}              Show the ip and port.\
+			\n        ${GREEN}-r${NC}, ${GREEN}--rpcport${NC}         Show the rpc port.\
+			\n        ${GREEN}-p${NC}, ${GREEN}--privkey${NC}         Show the masternode private key.\
 			\n  - ${YELLOW}dupmn checkmem                                 ${NC}Shows the memory usage (%) of every group of nodes.\
 			\n  - ${YELLOW}dupmn swapfile <size_in_mbytes>                ${NC}Creates, changes or deletes (if parameter is ${CYAN}0${NC}) a swapfile of the given size in MB to increase the virtual memory.\
 			\n  - ${YELLOW}dupmn update                                   ${NC}Checks the last version of the script and updates it if necessary.\
@@ -1005,16 +1037,18 @@ function main() {
 		exit
 	}
 	function opt_install_params() {
+		# for (( i=1; i<$#; i++ )); do
+		# while $# -gt 0; do ## shift
 		for x in $@; do
-			if [[ ! $IP && "$x" =~ ^-ip=* ]]; then
-				ip_parse ${x:4} "1"
-			elif [[ ! $NEW_RPC && "$x" =~ ^-rpcport=* ]]; then
-				NEW_RPC=${x:9}
+			if [[ ! $IP && "$x" =~ ^--ip=* ]]; then
+				ip_parse ${x:5} "1"
+			elif [[ ! $NEW_RPC && "$x" =~ ^--rpcport=* ]]; then
+				NEW_RPC=${x:10}
 				[[ $NEW_RPC -lt 1024 ||  $NEW_RPC -gt 49151 ]] && echo "-rpcport must be between 1024 and 49451" && exit
 				[[ ! $(port_check $NEW_RPC) ]] && echo "given -rpcport seems to be in use" && exit
-			elif [[ ! $NEW_KEY && "$x" =~ ^-privkey=* ]]; then
-				NEW_KEY=${x:9}
-			elif [[ ! $INSTALL_BOOTSTRAP && "$x" == -bootstrap ]]; then
+			elif [[ ! $NEW_KEY && "$x" =~ ^--privkey=* ]]; then
+				NEW_KEY=${x:10}
+			elif [[ ! $INSTALL_BOOTSTRAP && "$x" == --bootstrap ]]; then
 				INSTALL_BOOTSTRAP="1"
 			fi
 		done
