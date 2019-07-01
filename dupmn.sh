@@ -5,26 +5,27 @@
 
 # TODO:
 # - dupmn reinstall => allow main node ??
+# - dupmn install <prof_name> -c NUMBER | --count=NUMBER
 # - dupmn any_command 3>&1 &>/dev/null => get a json instead (looot of work)
-#    + general      [1-3] (X)
-#    + load_profile [4-8] (X)
-#    + select_dupe  [9-11] (X)
-#    + using_ip     [12] (X)
-#    + profadd      [13-16] (X)
+#    + general      [001-003] (X)
+#    + load_profile [100-104] (X)
+#    + select_dupe  [200-202] (X)
+#    + using_ip     [300] (X)
+#    + profadd      [400-403] (X)
 #    + profdel      [load_profile] (X)
-#    + install      [load_profile + using_ip + 17] (X)
+#    + install      [load_profile + using_ip + 500] (X)
 #    + reinstall    [install] (X)
 #    + uninstall    [load_profile + select_dupe] (X)
-#    + bootstrap    [load_profile + select_dupe + 18-19] (X)
+#    + bootstrap    [load_profile + select_dupe + 600-601] (X)
 #    + iplist       [none] (X)
-#    + ipadd        [using_ip + 20-25] ( )
-#    + ipdel        [using_ip + 20-25] ( )
-#    + rpcchange    [load_profile + select_dupe + ??] ( )
+#    + ipadd        [using_ip + 700-705] (X)
+#    + ipdel        [using_ip + 700-705] (X)
+#    + rpcchange    [load_profile + select_dupe + 800-802] (X)
 #    + systemctlall [load_profile + ??] ( )
 #    + list         [none] ( )
-#    + list [prof]  [load_profile ?] ( )
+#    + list [prof]  [load_profile in list] ( )
 #    + swapfile     [none] ( )
-#    + help         [none] (?)
+#    + help         [none] (-)
 #    + update       [none] (X)
 #
 
@@ -82,7 +83,7 @@ function load_profile() {
 
 	if [[ ! -f ".dupmn/$1" ]]; then
 		echo -e "${BLUE}$1${NC} profile hasn't been added"
-		echo_json "{\"error\":\"profile hasn't been added\",\"errcode\":4}"
+		echo_json "{\"error\":\"profile hasn't been added\",\"errcode\":100}"
 		exit
 	fi
 
@@ -94,14 +95,14 @@ function load_profile() {
 		if [[ ! "${!prof[@]}" =~ "$var" || -z "${prof[$var]}" ]]; then
 			echo -e "Seems like you modified something that was supposed to remain unmodified: ${MAGENTA}$var${NC} parameter should exists and have a assigned value in ${GREEN}.dupmn/$1${NC} file"
 			echo -e "You can fix it by adding the ${BLUE}$1${NC} profile again"
-			echo_json "{\"error\":\"profile modified\",\"errcode\":5}"
+			echo_json "{\"error\":\"profile modified\",\"errcode\":101}"
 			exit
 		fi
 	done
 	if [[ ! "${!conf[@]}" =~ "$1" || -z "${conf[$1]}" || ! $(is_number "${conf[$1]}") ]]; then
 		echo -e "Seems like you modified something that was supposed to remain unmodified: ${MAGENTA}$1${NC} parameter should exists and have a assigned number in ${GREEN}.dupmn/dupmn.conf${NC} file"
 		echo -e "You can fix it by adding ${MAGENTA}$1=0${NC} to the .dupmn/dupmn.conf file (replace the number 0 for the number of nodes installed with dupmn using the ${BLUE}$1${NC} profile)"
-		echo_json "{\"error\":\"dupmn.conf modified\",\"errcode\":6}"
+		echo_json "{\"error\":\"dupmn.conf modified\",\"errcode\":102}"
 		exit
 	fi
 
@@ -123,7 +124,7 @@ function load_profile() {
 			EXEC_COIN_DAEMON=$(which $COIN_DAEMON)
 			if [[ ! -f "$EXEC_COIN_DAEMON" ]]; then
 				echo -e "Can't locate ${GREEN}$COIN_DAEMON${NC}, it must be at the defined path from ${CYAN}\"COIN_PATH\"${NC} or in ${CYAN}/usr/bin/${NC} or ${CYAN}/usr/local/bin/${NC}"
-				echo_json "{\"error\":\"coin daemon can't be found\",\"errcode\":7}"
+				echo_json "{\"error\":\"coin daemon can't be found\",\"errcode\":103}"
 				exit
 			fi
 		fi
@@ -131,7 +132,7 @@ function load_profile() {
 			EXEC_COIN_CLI=$(which $COIN_CLI)
 			if [[ ! -f "$EXEC_COIN_CLI" ]]; then
 				echo -e "Can't locate ${GREEN}$COIN_CLI${NC}, it must be at the defined path from ${CYAN}\"COIN_PATH\"${NC} or in ${CYAN}/usr/bin/${NC} or ${CYAN}/usr/local/bin/${NC}"
-				echo_json "{\"error\":\"coin cli can't be found\",\"errcode\":8}"
+				echo_json "{\"error\":\"coin cli can't be found\",\"errcode\":104}"
 				exit
 			fi
 		fi
@@ -366,15 +367,15 @@ function get_ips() {
 function netmask_cidr() {
 	# <$1 = netmask>
 	if [[ $(echo $1 | grep -w -E -o '^(254|252|248|240|224|192|128)\.0\.0\.0|255\.(254|252|248|240|224|192|128|0)\.0\.0|255\.255\.(254|252|248|240|224|192|128|0)\.0|255\.255\.255\.(255|254|252|248|240|224|192|128|0)') ]]; then
-        local nbits=0
-        for oct in $(echo $1 | tr "." " "); do
-            while [[ $oct -gt 0 ]]; do
-                oct=$(($oct << 1 & 255))
-                nbits=$(($nbits+1))
-            done
-        done
-        echo $nbits
-    elif [[ $(is_number $1) ]]; then
+		local nbits=0
+		for oct in $(echo $1 | tr "." " "); do
+			while [[ $oct -gt 0 ]]; do
+				oct=$(($oct << 1 & 255))
+				nbits=$(($nbits+1))
+			done
+		done
+		echo $nbits
+	elif [[ $(is_number $1) ]]; then
 		stoi $1
 	fi
 }
@@ -385,7 +386,7 @@ function cmd_profadd() {
 
 	if [[ ! -f $1 ]]; then
 		echo -e "${BLUE}$1${NC} file doesn't exists"
-		echo_json "{\"error\":\"provided file doesn't exists\",\"errcode\":13}"
+		echo_json "{\"error\":\"provided file doesn't exists\",\"errcode\":400}"
 		return
 	fi
 
@@ -395,11 +396,11 @@ function cmd_profadd() {
 	for var in "${CMD_ARRAY[@]}"; do
 		if [[ ! "${!prof[@]}" =~ "$var" ]]; then
 			echo -e "${MAGENTA}$var${NC} doesn't exists in the supplied profile file"
-			echo_json "{\"error\":\"missing variable: $var\",\"errcode\":14}"
+			echo_json "{\"error\":\"missing variable: $var\",\"errcode\":401}"
 			return
 		elif [[ -z "${prof[$var]}" ]]; then
 			echo -e "${MAGENTA}$var${NC} doesn't contain a value in the supplied profile file"
-			echo_json "{\"error\":\"missing value: $var\",\"errcode\":15}"
+			echo_json "{\"error\":\"missing value: $var\",\"errcode\":402}"
 			return
 		fi
 	done
@@ -408,11 +409,11 @@ function cmd_profadd() {
 
 	if [[ $prof_name == "dupmn.conf" ]]; then
 		echo -e "From the infinite amount of possible names for the profile and you had to choose the only one that you can't use... for god sake..."
-		echo_json "{\"error\":\"reserved profile name\",\"errcode\":16}"
+		echo_json "{\"error\":\"reserved profile name\",\"errcode\":403}"
 		return
 	elif [[ ${prof_name:0:1} == "-" ]]; then
 		echo -e "Profile name cannot start with a dash ${RED}-${NC} character"
-		echo_json "{\"error\":\"reserved profile name\",\"errcode\":16}"
+		echo_json "{\"error\":\"reserved profile name\",\"errcode\":403}"
 		return
 	fi
 
@@ -491,7 +492,7 @@ function cmd_install() {
 
 	if [[ $FORCE_LISTEN == "1" && ! $IP ]]; then
 		echo -e "${RED}ERROR:${NC} A profile with ${MAGENTA}FORCE_LISTEN=1${NC} requires a IP with -ip=IP extra parameter when installing a dupe"
-		echo_json "{\"error\":\"A profile with FORCE_LISTEN=1 requires a IP when installing a dupe\",\"errcode\":17}" 
+		echo_json "{\"error\":\"A profile with FORCE_LISTEN=1 requires a IP when installing a dupe\",\"errcode\":500}" 
 		return
 	fi
 
@@ -637,7 +638,7 @@ function cmd_bootstrap() {
 
 	if [[ $1 -eq $2 ]]; then
 		echo "You cannot use the same node for the chain copy... that doesn't makes sense"
-		echo_json "{\"error\":\"Cannot use the same node for the bootstrap\",\"errcode\":18}"
+		echo_json "{\"error\":\"Cannot use the same node for the bootstrap\",\"errcode\":600}"
 		return
 	elif [[ ($1 -eq 0 || $2 -eq 0) && $(wallet_cmd loaded) ]]; then 
 		if [[ ! $COIN_SERVICE || ! -f /etc/systemd/system/$COIN_SERVICE ]]; then
@@ -645,7 +646,7 @@ function cmd_bootstrap() {
 			echo -e "Main masternode must be stopped to copy the chain, use ${GREEN}$COIN_CLI stop${NC} to stop the main node."
 			[[ $2 -eq 0 ]] && echo -e "Optionally you can put use a dupe as source of the chain files, example: ${YELLOW}dupmn bootstrap PROFILE 2 1${NC} (copy dupe 1 to dupe 2)."
 			echo -e "NOTE: Some main nodes may need to stop a systemd service instead, like ${GREEN}systemctl stop $COIN_NAME.service${NC}."
-			echo_json "{\"error\":\"Main node must be manually stopped for the bootstrap\",\"errcode\":19}"
+			echo_json "{\"error\":\"Main node must be manually stopped for the bootstrap\",\"errcode\":601}"
 			return
 		fi
 	fi
@@ -687,19 +688,19 @@ function cmd_ipmod() {
 
 	if [[ ! $netmask ]]; then
 		echo -e "${RED}ERROR:${NC} ${GREEN}$3${NC} hasn't a proper netmask structure"
-		# err 20
+		echo_json "{\"error\":\"Bad netmask structure\",\"errcode\":700}"
 		return
 	elif [[ $netmask -lt 0 || $netmask -gt $([[ $IP_TYPE == 4 ]] && echo 32 || echo 128) ]]; then
 		echo -e "${RED}ERROR:${NC} Netmask must be a value between 0 and $([[ $IP_TYPE == 4 ]] && echo 32 || echo 128)"
-		# err 21
+		echo_json "{\"error\":\"Netmask out of range\",\"errcode\":701}"
 		return
 	elif [[ $4 && ! $(ls /sys/class/net | grep -v "lo" | grep "^$4$") ]]; then
 		echo -e "${RED}ERROR:${NC} Interface ${GREEN}$4${NC} doesn't exists, use ${YELLOW}dupmn iplist${NC} to see the existing interfaces"
-		# err 22
+		echo_json "{\"error\":\"Interface doesn't exists\",\"errcode\":702}"
 		return
 	elif [[ $(echo "$iface" | wc -l) -gt 1 ]]; then
 		echo -e "${RED}ERROR:${NC} There are 2 or more available interfaces, you'll have to specify it as an extra parameter, use ${YELLOW}dupmn iplist${NC} to see the existing interfaces"
-		# err 23
+		echo_json "{\"error\":\"Interface must be specified\",\"errcode\":703}"
 		return
 	fi
 
@@ -710,11 +711,11 @@ function cmd_ipmod() {
 	fi
 	if [[ $1 == "add" && $(get_ips $IP_TYPE 0 $iface | grep "^$IP$") ]]; then
 		echo -e "${RED}ERROR:${NC} IP ${CYAN}$2${NC} already exists in the interface ${GREEN}$iface${NC}"
-		# err 24
+		echo_json "{\"error\":\"IP already exists\",\"errcode\":704}"
 		return
 	elif [[ $1 == "del" && ! $(get_ips $IP_TYPE 0 $iface | grep "^$IP$") ]]; then
 		echo -e "${RED}ERROR:${NC} IP ${CYAN}$2${NC} doesn't exists in the interface ${GREEN}$iface${NC}"
-		# err 24
+		echo_json "{\"error\":\"IP doesn't exists\",\"errcode\":704}"
 		return
 	fi
 
@@ -746,9 +747,9 @@ function cmd_ipmod() {
 		echo -e "IP ${CYAN}$2${NC}/${YELLOW}$netmask${NC} successfully $([[ $1 == "add" ]] && echo "added" || echo "deleted")" 
 	else
 		echo -e "${RED}UNEXPECTED ERROR:${NC} $ip_res"
-		# err 25
+		echo_json "{\"error\":\"Unexpected error: $ip_res\",\"errcode\":705}"
 	fi
-	#echo_json message, ip, ip_type, netmask, iface
+	echo_json "{\"message\":\"IP $([[ $1 == "add" ]] && echo "added" || echo "deleted")\",\"ip\":\"$IP\",\"ip_type\":$IP_TYPE,\"iface\":\"$iface\"}"
 }
 function cmd_rpcchange() {
 	# <$1 = instance_number> | [$2 = port_number]
@@ -760,30 +761,30 @@ function cmd_rpcchange() {
 		new_port=$(find_port $new_port)
 	elif [[ ! $(is_number $2) ]]; then
 		echo -e "${CYAN}$2${NC} is not a number"
-		# echo_json err
+		echo_json "{\"error\":\"$2 is not a number\",\"errcode\":800}"
 		return
 	elif [[ $2 -lt 1024 || $2 -gt 49151 ]]; then
 		echo -e "${MAGENTA}$2${NC} is not a valid or a reserved port (must be between ${MAGENTA}1024${NC} and ${MAGENTA}49151${NC})"
-		# echo_json err
+		echo_json "{\"error\":\"Port number reserved or out of range\",\"errcode\":801}"
 		return
 	else
 		new_port=$(stoi $2)
 		if [[ ! $(port_check $new_port) ]]; then
 			echo -e "Port ${MAGENTA}$new_port${NC} seems to be in use by another process"
-			# echo_json err
+			echo_json "{\"error\":\"Port number already in use\",\"errcode\":802}"
 			return
 		fi
 	fi
 
 	if [[ $1 -eq 0 && (! $COIN_SERVICE || ! -f /etc/systemd/system/$COIN_SERVICE) && $(wallet_cmd loaded) ]]; then
 		echo -e "The ${BLUE}$PROFILE_NAME${NC} main node must be manually stopped to change the rpc port"
-		# echo_json warn
+		echo_json "{\"message\":\"Port changed, main node restart required\",\"port\":$new_port,\"retcode\":1}"
 	else
 		local wallet_loaded=$(wallet_cmd stop $1)
 		$(conf_set_value $(get_folder $1)/$COIN_CONFIG "rpcport" $new_port 1)
 		[[ $wallet_loaded ]] && wallet_cmd start $1 > /dev/null
 		echo -e "${BLUE}$PROFILE_NAME${NC} node ${CYAN}number $1${NC} is now listening the rpc port ${MAGENTA}$new_port${NC}"
-		# echo_json ok
+		echo_json "{\"message\":\"Port changed\",\"port\":$new_port,\"retcode\":0/}"
 	fi
 }
 function cmd_systemctlall() {
@@ -931,16 +932,16 @@ function cmd_help() {
 			\n  - ${YELLOW}dupmn profdel <prof_name>                      ${NC}Deletes the given profile name, this will uninstall too any dupe that uses this profile.\
 			\n  - ${YELLOW}dupmn install <prof_name> [params...]          ${NC}Install a new dupe based on the parameters of the given profile name.\
 			\n      ${YELLOW}[params...]${NC} list:\
-			\n        ${GREEN}--ip=${NC}IP               Use a specific IPv4 or IPv6.\
-			\n        ${GREEN}--rpcport=${NC}PORT        Use a specific port for RPC commands (must be valid and not in use).\
-			\n        ${GREEN}--privkey=${NC}PRIVATEKEY  Set a user-defined masternode private key.\
-			\n        ${GREEN}--bootstrap${NC}           Apply a bootstrap during the installation.\
+			\n        ${GREEN}-i ${DARKCYAN}IP${NC},  ${GREEN}--ip=${DARKCYAN}IP${NC}       Use a specific IPv4 or IPv6.\
+			\n        ${GREEN}-r ${DARKCYAN}RPC${NC}, ${GREEN}--rpcport=${DARKCYAN}RPC${NC} Use a specific port for RPC commands (must be valid and not in use).\
+			\n        ${GREEN}-p ${DARKCYAN}KEY${NC}, ${GREEN}--privkey=${DARKCYAN}KEY${NC} Set a user-defined masternode private key.\
+			\n        ${GREEN}-b${NC},     ${GREEN}--bootstrap${NC}   Apply a bootstrap during the installation.\
 			\n  - ${YELLOW}dupmn reinstall <prof_name> <node> [params...] ${NC}Reinstalls the specified dupe, this is just in case if the dupe is giving problems.\
 			\n      ${YELLOW}[params...]${NC} list:\
-			\n        ${GREEN}--ip=${NC}IP               Use a specific IPv4 or IPv6.\
-			\n        ${GREEN}--rpcport=${NC}PORT        Use a specific port for RPC commands (must be valid and not in use).\
-			\n        ${GREEN}--privkey=${NC}PRIVATEKEY  Set a user-defined masternode private key.\
-			\n        ${GREEN}--bootstrap${NC}           Apply a bootstrap during the reinstallation.\
+			\n        ${GREEN}-i ${DARKCYAN}IP${NC},  ${GREEN}--ip=${DARKCYAN}IP${NC}       Use a specific IPv4 or IPv6.\
+			\n        ${GREEN}-r ${DARKCYAN}RPC${NC}, ${GREEN}--rpcport=${DARKCYAN}RPC${NC} Use a specific port for RPC commands (must be valid and not in use).\
+			\n        ${GREEN}-p ${DARKCYAN}KEY${NC}, ${GREEN}--privkey=${DARKCYAN}KEY${NC} Set a user-defined masternode private key.\
+			\n        ${GREEN}-b${NC},     ${GREEN}--bootstrap${NC}   Apply a bootstrap during the reinstallation.\
 			\n  - ${YELLOW}dupmn uninstall <prof_name> <node|all>         ${NC}Uninstall the specified node of the given profile name, you can put ${YELLOW}all${NC} instead of a node number to uninstall all the duplicated instances.\
 			\n  - ${YELLOW}dupmn bootstrap <prof_name> <node_1> <node_2>  ${NC}Copies the chain from node_1 to node_2.\
 			\n  - ${YELLOW}dupmn iplist                                   ${NC}Shows all your configurated IPv4 and IPv6.\
@@ -977,15 +978,15 @@ function main() {
 
 		if [[ ! $(is_number $1) ]]; then
 			echo -e "${RED}$1${NC} is not a number"
-			echo_json "{\"error\":\"not a number: $1\",\"errcode\":9}"
+			echo_json "{\"error\":\"not a number: $1\",\"errcode\":200}"
 			exit
 		elif [[ $1 -eq 0 && $2 -ne 1 ]]; then
 			echo -e "Instance ${CYAN}0${NC} is a reference to the main node, not a dupe, can't use this one in this command"
-			echo_json "{\"error\":\"main node reference not allowed\",\"errcode\":10}"
+			echo_json "{\"error\":\"main node reference not allowed\",\"errcode\":201}"
 			exit
 		elif [[ $1 -gt $DUP_COUNT ]]; then
 			echo -e "Instance ${CYAN}$(stoi $1)${NC} doesn't exists, there are only ${CYAN}$DUP_COUNT${NC} instances of ${BLUE}$PROFILE_NAME${NC}"
-			echo_json "{\"error\":\"not existing dupe\",\"errcode\":11}"
+			echo_json "{\"error\":\"not existing dupe\",\"errcode\":202}"
 			exit
 		fi
 	}
@@ -1033,24 +1034,31 @@ function main() {
 		fi
 
 		echo -e "${GREEN}$1${NC} doesn't have the structure of a IPv4 or a IPv6"
-		echo_json "{\"error\":\"not a IP: $1\",\"errcode\":12}"
+		echo_json "{\"error\":\"not a IP: $1\",\"errcode\":300}"
 		exit
 	}
 	function opt_install_params() {
-		# for (( i=1; i<$#; i++ )); do
-		# while $# -gt 0; do ## shift
-		for x in $@; do
-			if [[ ! $IP && "$x" =~ ^--ip=* ]]; then
-				ip_parse ${x:5} "1"
-			elif [[ ! $NEW_RPC && "$x" =~ ^--rpcport=* ]]; then
-				NEW_RPC=${x:10}
-				[[ $NEW_RPC -lt 1024 ||  $NEW_RPC -gt 49151 ]] && echo "-rpcport must be between 1024 and 49451" && exit
-				[[ ! $(port_check $NEW_RPC) ]] && echo "given -rpcport seems to be in use" && exit
-			elif [[ ! $NEW_KEY && "$x" =~ ^--privkey=* ]]; then
-				NEW_KEY=${x:10}
-			elif [[ ! $INSTALL_BOOTSTRAP && "$x" == --bootstrap ]]; then
-				INSTALL_BOOTSTRAP="1"
-			fi
+		function extract_param() {
+			# <$1* = args>
+			[[ "${!i}" =~ ^-[a-z]$ ]] && ((i++)) && echo ${!i} || echo ${!i:$(echo ${!i} | cut -d '=' -f1 |  wc -c)}
+		}
+		for (( i=1; i<=$#; i++ )); do
+			case "${!i}" in
+				"-i"|--ip=*)
+					ip_parse "$(extract_param $@)" "1"
+					;;
+				"-r"|--rpcport=*)
+					NEW_RPC="$(extract_param $@)"
+					[[ $NEW_RPC -lt 1024 ||  $NEW_RPC -gt 49151 ]] && echo "-rpcport must be between 1024 and 49451" && exit
+					[[ ! $(port_check $NEW_RPC) ]] && echo "given -rpcport seems to be in use" && exit
+					;;
+				"-p"|--privkey=*)
+					NEW_KEY="$(extract_param $@)"
+					;;
+				"-b"|--bootstrap)
+					INSTALL_BOOTSTRAP="1"
+					;;
+			esac
 		done
 	}
 	function exit_no_param() {
