@@ -27,15 +27,15 @@ Check the [Usage example](#usage-example) to see the guide of the steps to follo
 - [`dupmn profadd <profile_file> [new_profile_name]`](https://github.com/neo3587/dupmn/wiki/Commands#profadd) : Adds a profile with the given name that will be used to create dupes of the masternode.
 - [`dupmn profdel <profile_name>`](https://github.com/neo3587/dupmn/wiki/Commands#profdel) : Deletes the saved profile with the given name and uninstalls the dupes made with that profile.
 - [`dupmn install <profile_name> [params...]`](https://github.com/neo3587/dupmn/wiki/Commands#install) : Install a new dupe based on the parameters of the given profile name. Optional `[params]` list:  
-`--ip=IP` : Use a specific IPv4 or IPv6.  
-`--rpcport=PORT` : Use a specific port for RPC commands (must be valid and not in use).  
-`--privkey=PRIVATEKEY` : Set a user-defined masternode private key.  
-`--bootstrap` : Apply a bootstrap during the installation.  
+`-i IP`, `--ip=IP` : Use a specific IPv4 or IPv6.  
+`-r RPC`, `--rpcport=RPC` : Use a specific port for RPC commands (must be valid and not in use).  
+`-p KEY`, `--privkey=KEY` : Set a user-defined masternode private key.  
+`-b`, `--bootstrap` : Apply a bootstrap during the installation.  
 - [`dupmn reinstall <profile_name> <node> [params...]`](https://github.com/neo3587/dupmn/wiki/Commands#reinstall) : Reinstalls the specified node number, this is just in case if the instance is giving problems. Optional `[params]` list:  
-`--ip=IP` : Use a specific IPv4 or IPv6.  
-`--rpcport=PORT` : Use a specific port for RPC commands (must be valid and not in use).  
-`--privkey=PRIVATEKEY` : Set a user-defined masternode private key.  
-`--bootstrap` : Apply a bootstrap during the reinstallation.  
+`-i IP`, `--ip=IP` : Use a specific IPv4 or IPv6.  
+`-r RPC`, `--rpcport=RPC` : Use a specific port for RPC commands (must be valid and not in use).  
+`-p KEY`, `--privkey=KEY` : Set a user-defined masternode private key.   
+`-b`, `--bootstrap` : Apply a bootstrap during the reinstallation.  
 - [`dupmn uninstall <profile_name> <node|all>`](https://github.com/neo3587/dupmn/wiki/Commands#uninstall) : Uninstall the specified node number of the given profile name, you can put `all` instead of a node number to uninstall all the dupes.
 - [`dupmn bootstrap <profile_name> <node_1> <node_2>`](https://github.com/neo3587/dupmn/wiki/Commands#bootstrap) : Copies the stored chain from the node_1 to the node_2.
 - [`dupmn iplist`](https://github.com/neo3587/dupmn/wiki/Commands#iplist) : Shows your current IPv4 and IPv6 addresses.
