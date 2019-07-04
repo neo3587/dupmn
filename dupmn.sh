@@ -200,19 +200,6 @@ function configure_systemd() {
 	chmod +x /etc/systemd/system/$service_name.service
 
 	systemctl daemon-reload
-	if [[ $1 && $INSTALL_BOOTSTRAP ]]; then
-		if [[ ! $(wallet_cmd loaded) || ($COIN_SERVICE && -f /etc/systemd/system/$COIN_SERVICE) ]]; then
-			cmd_bootstrap 0 $1 3>/dev/null
-		elif [[ $DUP_COUNT -ge 2 && $1 -ge 2 ]]; then
-			echo -e "${MAGENTA}NOTE:${NC} Can't stop the main node, trying the bootstrap with the dupe ${CYAN}1${NC}"
-			cmd_bootstrap 1 $1 3>/dev/null
-		elif [[ $DUP_COUNT -ge 2 && $1 -eq 1 ]]; then
-			echo -e "${MAGENTA}NOTE:${NC} Can't stop the main node, trying the bootstrap with the dupe ${CYAN}2${NC}"
-			cmd_bootstrap 2 $1 3>/dev/null
-		else
-			echo -e "${YELLOW}WARNING:${NC} Can't automatically apply the bootstrap, use ${GREEN}dupmn bootstrap${NC} manually"
-		fi
-	fi
 	[[ $1 ]] && systemctl start $service_name.service && sleep 1
 	systemctl enable $service_name.service &> /dev/null
 
@@ -279,72 +266,11 @@ function try_cmd() {
 	[[ "$check" ]] && echo $check || echo $($1 $3)
 	exec 2> /dev/tty
 }
-function install_proc() {
-	# <$1 = profile_name> | <$2 = instance_number>
-
-	if [ ! -d "$COIN_FOLDER" ]; then
-		echo -e "$COIN_FOLDER folder can't be found, $COIN_NAME is not installed in the system or the given profile has a wrong parameter"
-		exit
-	fi
-
-	new_folder="$COIN_FOLDER$2"
-
-	if [[ ! $NEW_KEY ]]; then
-		for (( i=0; i<=$DUP_COUNT; i++ )); do
-			if [[ $(wallet_cmd loaded $i) ]]; then
-				NEW_KEY=$(try_cmd $(exec_coin cli $i) "createmasternodekey" "masternode genkey")
-				break
-			fi
-		done
-	fi
-
-	if [[ ! $NEW_RPC ]]; then
-		NEW_RPC=$([[ $RPC_PORT ]] && echo $RPC_PORT || conf_get_value $COIN_FOLDER/$COIN_CONFIG "rpcport")
-		NEW_RPC=$(find_port $(($([[ $NEW_RPC ]] && stoi $NEW_RPC || echo 1023)+1)))
-	fi
-
-	mkdir $new_folder &> /dev/null
-	cp $COIN_FOLDER/$COIN_CONFIG $new_folder
-
-	local new_user=$(conf_get_value $COIN_FOLDER/$COIN_CONFIG "rpcuser")
-	local new_pass=$(conf_get_value $COIN_FOLDER/$COIN_CONFIG "rpcpassword")
-	new_user=$(cat /dev/urandom | tr -dc 'a-zA-Z0-9' | fold -w $([[ ${#new_user} -gt 3 ]] && echo ${#new_user} || echo 10) | head -n 1)
-	new_pass=$(cat /dev/urandom | tr -dc 'a-zA-Z0-9' | fold -w $([[ ${#new_pass} -gt 6 ]] && echo ${#new_pass} || echo 22) | head -n 1)
-
-	$(conf_set_value $new_folder/$COIN_CONFIG "rpcuser"           $new_user 1)
-	$(conf_set_value $new_folder/$COIN_CONFIG "rpcpassword"       $new_pass 1)
-	$(conf_set_value $new_folder/$COIN_CONFIG "rpcport"           $NEW_RPC  1)
-	$(conf_set_value $new_folder/$COIN_CONFIG "listen"            "0"       1)
-	$(conf_set_value $new_folder/$COIN_CONFIG "masternodeprivkey" $NEW_KEY  1)
-	[[ ! $(grep "addnode=127.0.0.1" $new_folder/$COIN_CONFIG) ]] && echo "addnode=127.0.0.1" >> $new_folder/$COIN_CONFIG
-
-	$(make_chmod_file /usr/bin/$COIN_CLI-0      "#!/bin/bash\n$EXEC_COIN_CLI \$@")
-	$(make_chmod_file /usr/bin/$COIN_DAEMON-0   "#!/bin/bash\n$EXEC_COIN_DAEMON \$@")
-	$(make_chmod_file /usr/bin/$COIN_CLI-$2     "#!/bin/bash\n$EXEC_COIN_CLI -datadir=$new_folder \$@")
-	$(make_chmod_file /usr/bin/$COIN_DAEMON-$2  "#!/bin/bash\n$EXEC_COIN_DAEMON -datadir=$new_folder \$@")
-	$(make_chmod_file /usr/bin/$COIN_CLI-all    "#!/bin/bash\nfor (( i=0; i<=$2; i++ )) do\n echo -e MN\$i:\n $COIN_CLI-\$i \$@\ndone")
-	$(make_chmod_file /usr/bin/$COIN_DAEMON-all "#!/bin/bash\nfor (( i=0; i<=$2; i++ )) do\n echo -e MN\$i:\n $COIN_DAEMON-\$i \$@\ndone")
-
-	$(conf_set_value .dupmn/dupmn.conf $1 $2 1)
-
-	if [[ ! $NEW_KEY ]]; then
-		# main and dupes were stopped on createmasternodekey
-		echo -e "Couldn't find a opened ${BLUE}$COIN_NAME${NC} wallet opened to generate a private key, temporary opening the new wallet to generate a key"
-		$(conf_set_value $new_folder/$COIN_CONFIG "masternode"        "0"      1)
-		$COIN_DAEMON-$2 -daemon
-		wallet_cmd loaded $2 30 > /dev/null
-		NEW_KEY=$(try_cmd $COIN_CLI-$2 "createmasternodekey" "masternode genkey")
-		$(conf_set_value $new_folder/$COIN_CONFIG "masternodeprivkey" $NEW_KEY 1)
-		$(conf_set_value $new_folder/$COIN_CONFIG "masternode"        "1"      1)
-		$COIN_CLI-$2 stop
-		sleep 3
-	fi
-}
 function conf_set_value() {
 	# <$1 = conf_file> | <$2 = key> | <$3 = value> | [$4 = force_create]
 	#[[ $(grep -ws "^$2" "$1" | cut -d "=" -f1) == "$2" ]] && sed -i "/^$2=/s/=.*/=$3/" "$1" || ([[ "$4" == "1" ]] && echo -e "$2=$3" >> $1)
 	local key_line=$(grep -ws "^$2" "$1")
-	[[ "$(echo $key_line | cut -d '=' -f1)" =~ "$2" ]] && sed -i "/^$2/c $(echo $key_line | grep -oP '^[\s\S]{0,}=[\s]{0,}')$3" $1 || $([[ "$4" == "1" ]] && echo -e "$2=$3" >> $1)
+	[[ "$(echo $key_line | cut -d '=' -f1)" == "$2" ]] && sed -i "/^$2=/c $2=$3" $1 || $([[ "$4" == "1" ]] && echo -e "$2=$3" >> $1)
 }
 function conf_get_value() {
 	# <$1 = conf_file> | <$2 = key> | [$3 = limit]
@@ -466,7 +392,6 @@ function cmd_profadd() {
 	echo_json "{\"message\":\"profile successfully added\",\"retcode\":$retcode}"
 }
 function cmd_profdel() {
-	# <$1 = profile_name>
 
 	local deleted_dupes=$DUP_COUNT
 	if [[ $DUP_COUNT -gt 0 ]]; then
@@ -476,27 +401,86 @@ function cmd_profdel() {
 		fi
 		cmd_uninstall $1 all 3>/dev/null
 	fi
-	sed -i "/$1\=/d" .dupmn/dupmn.conf
+	sed -i "/$PROFILE_NAME\=/d" .dupmn/dupmn.conf
 	sed -i "/^$/d"   .dupmn/dupmn.conf
 
 	rm -rf /usr/bin/$COIN_DAEMON-0
 	rm -rf /usr/bin/$COIN_DAEMON-all
 	rm -rf /usr/bin/$COIN_CLI-0
 	rm -rf /usr/bin/$COIN_CLI-all
-	rm -rf .dupmn/$1
+	rm -rf .dupmn/$PROFILE_NAME
 
 	echo_json "{\"message\":\"profile successfully deleted\",\"count\":$deleted_dupes}"
 }
 function cmd_install() {
-	# <$1 = profile_name> | <$2 = instance_number>
+	# <$1 = instance_number>
 
-	if [[ $FORCE_LISTEN == "1" && ! $IP ]]; then
+	if [ ! -d "$COIN_FOLDER" ]; then
+		echo -e "$COIN_FOLDER folder can't be found, $COIN_NAME is not installed in the system or the given profile has a wrong parameter"
+		echo_json "{\"error\":\"Can't find coin folder: $COIN_FOLDER\",\"errcode\":500}" 
+		exit
+	elif [[ $FORCE_LISTEN == "1" && ! $IP ]]; then
 		echo -e "${RED}ERROR:${NC} A profile with ${MAGENTA}FORCE_LISTEN=1${NC} requires a IP with -ip=IP extra parameter when installing a dupe"
-		echo_json "{\"error\":\"A profile with FORCE_LISTEN=1 requires a IP when installing a dupe\",\"errcode\":500}" 
-		return
+		echo_json "{\"error\":\"A profile with FORCE_LISTEN=1 requires a IP when installing a dupe\",\"errcode\":501}" 
+		exit
 	fi
 
-	install_proc $1 $2
+	local new_folder="$COIN_FOLDER$1"
+	local retcode=0
+
+	# install_proc main
+
+	if [[ ! $NEW_KEY ]]; then
+		for (( i=0; i<=$DUP_COUNT; i++ )); do
+			if [[ $(wallet_cmd loaded $i) ]]; then
+				NEW_KEY=$(try_cmd $(exec_coin cli $i) "createmasternodekey" "masternode genkey")
+				break
+			fi
+		done
+	fi
+	if [[ ! $NEW_RPC ]]; then
+		NEW_RPC=$([[ $RPC_PORT ]] && echo $RPC_PORT || conf_get_value $COIN_FOLDER/$COIN_CONFIG "rpcport")
+		NEW_RPC=$(find_port $(($([[ $NEW_RPC ]] && stoi $NEW_RPC || echo 1023)+1)))
+	fi
+
+	mkdir $new_folder &> /dev/null
+	cp $COIN_FOLDER/$COIN_CONFIG $new_folder
+
+	local new_user=$(conf_get_value $COIN_FOLDER/$COIN_CONFIG "rpcuser")
+	local new_pass=$(conf_get_value $COIN_FOLDER/$COIN_CONFIG "rpcpassword")
+	new_user=$(cat /dev/urandom | tr -dc 'a-zA-Z0-9' | fold -w $([[ ${#new_user} -gt 3 ]] && echo ${#new_user} || echo 10) | head -n 1)
+	new_pass=$(cat /dev/urandom | tr -dc 'a-zA-Z0-9' | fold -w $([[ ${#new_pass} -gt 6 ]] && echo ${#new_pass} || echo 22) | head -n 1)
+
+	$(conf_set_value $new_folder/$COIN_CONFIG "rpcuser"           $new_user 1)
+	$(conf_set_value $new_folder/$COIN_CONFIG "rpcpassword"       $new_pass 1)
+	$(conf_set_value $new_folder/$COIN_CONFIG "rpcport"           $NEW_RPC  1)
+	$(conf_set_value $new_folder/$COIN_CONFIG "listen"            0         1)
+	$(conf_set_value $new_folder/$COIN_CONFIG "masternodeprivkey" $NEW_KEY  1)
+	[[ ! $(grep "addnode=127.0.0.1" $new_folder/$COIN_CONFIG) ]] && echo "addnode=127.0.0.1" >> $new_folder/$COIN_CONFIG
+
+	$(make_chmod_file /usr/bin/$COIN_CLI-0      "#!/bin/bash\n$EXEC_COIN_CLI \$@")
+	$(make_chmod_file /usr/bin/$COIN_DAEMON-0   "#!/bin/bash\n$EXEC_COIN_DAEMON \$@")
+	$(make_chmod_file /usr/bin/$COIN_CLI-$1     "#!/bin/bash\n$EXEC_COIN_CLI -datadir=$new_folder \$@")
+	$(make_chmod_file /usr/bin/$COIN_DAEMON-$1  "#!/bin/bash\n$EXEC_COIN_DAEMON -datadir=$new_folder \$@")
+	$(make_chmod_file /usr/bin/$COIN_CLI-all    "#!/bin/bash\nfor (( i=0; i<=$1; i++ )) do\n echo -e MN\$i:\n $COIN_CLI-\$i \$@\ndone")
+	$(make_chmod_file /usr/bin/$COIN_DAEMON-all "#!/bin/bash\nfor (( i=0; i<=$1; i++ )) do\n echo -e MN\$i:\n $COIN_DAEMON-\$i \$@\ndone")
+
+	$(conf_set_value .dupmn/dupmn.conf $PROFILE_NAME $1 1)
+
+	if [[ ! $NEW_KEY ]]; then
+		# main and dupes were stopped on createmasternodekey
+		echo -e "Couldn't find a opened ${BLUE}$COIN_NAME${NC} wallet opened to generate a private key, temporary opening the new wallet to generate a key"
+		$(conf_set_value $new_folder/$COIN_CONFIG "masternode"        "0"      1)
+		$COIN_DAEMON-$1 -daemon
+		wallet_cmd loaded $1 30 > /dev/null
+		NEW_KEY=$(try_cmd $(exec_coin cli $1) "createmasternodekey" "masternode genkey")
+		$(conf_set_value $new_folder/$COIN_CONFIG "masternodeprivkey" $NEW_KEY 1)
+		$(conf_set_value $new_folder/$COIN_CONFIG "masternode"        "1"      1)
+		$COIN_CLI-$1 stop
+		sleep 3
+	fi
+
+	# install_proc IP
 
 	local mn_port=$(conf_get_value $new_folder/$COIN_CONFIG "port")
 	[[ ! "$mn_port" =~ ^[0-9]+$ ]] && mn_port=$(conf_get_value $new_folder/$COIN_CONFIG "masternodeaddr" | rev | cut -d : -f1 | rev)
@@ -527,47 +511,60 @@ function cmd_install() {
 		fi
 	fi
 
-	DUP_COUNT=$(($DUP_COUNT+1))
-	configure_systemd $2
+	if [[ $INSTALL_BOOTSTRAP ]]; then
+		if [[ ! $(wallet_cmd loaded) || ($COIN_SERVICE && -f /etc/systemd/system/$COIN_SERVICE) ]]; then
+			cmd_bootstrap 0 $1 3>/dev/null
+		elif [[ $1 -ge 2 ]]; then
+			echo -e "${MAGENTA}NOTE:${NC} Can't stop the main node, trying the bootstrap with the dupe ${CYAN}1${NC}"
+			cmd_bootstrap 1 $1 3>/dev/null
+		elif [[ $DUP_COUNT -ge 2 && $1 -eq 1 ]]; then # only for reinstall
+			echo -e "${MAGENTA}NOTE:${NC} Can't stop the main node, trying the bootstrap with the dupe ${CYAN}2${NC}"
+			cmd_bootstrap 2 $1 3>/dev/null
+		else
+			echo -e "${YELLOW}WARNING:${NC} Can't automatically apply the bootstrap, use ${GREEN}dupmn bootstrap${NC} manually"
+			((retcode+=1))
+		fi
+	fi
+
+	configure_systemd $1
 
 	local show_ip=$IP
 	[[ ! $show_ip ]] && show_ip=$(conf_get_value $new_folder/$COIN_CONFIG "masternodeaddr" | cut -d : -f1)
 	[[ ! $show_ip ]] && show_ip=$(conf_get_value $new_folder/$COIN_CONFIG "externalip"     | cut -d : -f1)
 
 	echo -e "===================================================================================================\
-			\n${BLUE}$COIN_NAME${NC} duplicated masternode ${CYAN}number $2${NC} should be now up and trying to sync with the blockchain.\
+			\n${BLUE}$COIN_NAME${NC} duplicated masternode ${CYAN}number $1${NC} should be now up and trying to sync with the blockchain.\
 			\nThe duplicated masternode uses the $([[ $show_ip ]] && echo "IP:PORT ${YELLOW}$show_ip:$mn_port${NC}" || echo "same IP and PORT than the original one").\
-			\nRPC port is ${MAGENTA}$NEW_RPC${NC}, this one is used to send commands to the wallet, DON'T put it in 'masternode.conf' (other programs might want to use this port which causes a conflict, but you can change it with ${MAGENTA}dupmn rpcchange $1 $2 PORT_NUMBER${NC}).\
-			\nStart:              ${RED}systemctl start   $COIN_NAME-$2.service${NC}\
-			\nStop:               ${RED}systemctl stop    $COIN_NAME-$2.service${NC}\
-			\nStart on reboot:    ${RED}systemctl enable  $COIN_NAME-$2.service${NC}\
-			\nNo start on reboot: ${RED}systemctl disable $COIN_NAME-$2.service${NC}\
+			\nRPC port is ${MAGENTA}$NEW_RPC${NC}, this one is used to send commands to the wallet, DON'T put it in 'masternode.conf' (other programs might want to use this port which causes a conflict, but you can change it with ${MAGENTA}dupmn rpcchange $PROFILE_NAME $1 PORT_NUMBER${NC}).\
+			\nStart:              ${RED}systemctl start   $COIN_NAME-$1.service${NC}\
+			\nStop:               ${RED}systemctl stop    $COIN_NAME-$1.service${NC}\
+			\nStart on reboot:    ${RED}systemctl enable  $COIN_NAME-$1.service${NC}\
+			\nNo start on reboot: ${RED}systemctl disable $COIN_NAME-$1.service${NC}\
 			\n(Currently configured to start on reboot)\
 			\nDUPLICATED MASTERNODE PRIVATEKEY is: ${GREEN}$NEW_KEY${NC}\
-			\nTo check the masternode status just use: ${GREEN}$COIN_CLI-$2 masternode status${NC} (Wait until the new masternode is synced with the blockchain before trying to start it).\
+			\nTo check the masternode status just use: ${GREEN}$COIN_CLI-$1 masternode status${NC} (Wait until the new masternode is synced with the blockchain before trying to start it).\
 			\nNOTE 1: ${GREEN}$COIN_CLI-0${NC} and ${GREEN}$COIN_DAEMON-0${NC} are just a reference to the 'main masternode', not a created one with dupmn.\
 			\nNOTE 2: You can use ${GREEN}$COIN_CLI-all [parameters]${NC} and ${GREEN}$COIN_DAEMON-all [parameters]${NC} to apply the parameters on all masternodes. Example: ${GREEN}$COIN_CLI-all masternode status${NC}\
 			\n==================================================================================================="
 
-	local retcode=0
 	if [[ $IP ]]; then
 		for (( i=0; i<$DUP_COUNT; i++ )); do
-			if [[ $i != $2 && $(conf_get_value $(get_folder $i)$COIN_CONFIG "bind") == "$IP" ]]; then
+			if [[ $i != $1 && $(conf_get_value $(get_folder $i)$COIN_CONFIG "bind") == "$IP" ]]; then
 				echo -e "${RED}WARNING:${NC} looks like that the ${BLUE}node $i${NC} already uses the same IP, it may cause that this dupe doesn't work"
-				((retcode+=1))
+				((retcode+=2))
 				break;
 			fi
 		done
 		if [[ ($IP_TYPE == 4 && ! $(get_ips 4 | grep -w $IP)) || ($IP_TYPE == 6 && ! $(get_ips 6 | grep -w ${IP:1:-1})) ]]; then
 			echo -e "${RED}WARNING:${NC} IP ${GREEN}$IP${NC} is probably not added, the node may not work due to using a non-existent IP"
-			((retcode+=2))
+			((retcode+=4))
 		fi
 	fi
 
-	echo_json "{\"message\":\"dupe successfully installed\",\"ip\":\"$([[ $show_ip ]] && echo $show_ip || echo undefined)\",\"port\":\"$mn_port\",\"rpc\":\"$NEW_RPC\",\"privkey\":\"$NEW_KEY\",\"dup\":$2,\"retcode\":$retcode}"
+	echo_json "{\"message\":\"dupe successfully installed\",\"ip\":\"$([[ $show_ip ]] && echo $show_ip || echo undefined)\",\"port\":\"$mn_port\",\"rpc\":\"$NEW_RPC\",\"privkey\":\"$NEW_KEY\",\"dup\":$1,\"retcode\":$retcode}"
 }
 function cmd_reinstall() {
-	# <$1 = profile_name> | <$2 = instance_number>
+	# <$1 = instance_number>
 
 	if [[ $FORCE_LISTEN == "1" && ! $IP ]]; then
 		echo -e "${RED}ERROR:${NC} A profile with ${MAGENTA}FORCE_LISTEN=1${NC} requires a IP with -ip=IP extra parameter when reinstalling a dupe"
@@ -575,24 +572,24 @@ function cmd_reinstall() {
 		return
 	fi
 
-	wallet_cmd stop $2 > /dev/null
+	wallet_cmd stop $1 > /dev/null
 	[[ ! $NEW_KEY ]] && NEW_KEY=$(conf_get_value $COIN_FOLDER$2/$COIN_CONFIG "masternodeprivkey")
 	rm -rf $COIN_FOLDER$2
 
-	cmd_install $1 $2
+	cmd_install $1
 	DUP_COUNT=$(($DUP_COUNT-1))
 
 	$(make_chmod_file /usr/bin/$COIN_CLI-all    "#!/bin/bash\nfor (( i=0; i<=$DUP_COUNT; i++ )) do\n echo -e MN\$i:\n $COIN_CLI-\$i \$@\ndone")
 	$(make_chmod_file /usr/bin/$COIN_DAEMON-all "#!/bin/bash\nfor (( i=0; i<=$DUP_COUNT; i++ )) do\n echo -e MN\$i:\n $COIN_DAEMON-\$i \$@\ndone")
 
-	$(conf_set_value .dupmn/dupmn.conf $1 $DUP_COUNT)
+	$(conf_set_value .dupmn/dupmn.conf $PROFILE_NAME $DUP_COUNT)
 }
 function cmd_uninstall() {
-	# <$1 = profile_name> | <$2 = instance_number/all>
+	# <$1 = instance_number/all>
 
-	if [ $2 == "all" ]; then
+	if [ $1 == "all" ]; then
 		for (( i=$DUP_COUNT; i>=1; i-- )); do
-			echo -e "Uninstalling ${BLUE}$1${NC} instance ${CYAN}number $i${NC}"
+			echo -e "Uninstalling ${BLUE}$PROFILE_NAME${NC} instance ${CYAN}number $i${NC}"
 			wallet_cmd stop $i > /dev/null
 			rm -rf /usr/bin/$COIN_CLI-$i
 			rm -rf /usr/bin/$COIN_DAEMON-$i
@@ -600,25 +597,25 @@ function cmd_uninstall() {
 			rm -rf /etc/systemd/system/$COIN_NAME-$i.service
 			rm -rf $COIN_FOLDER$i
 		done
-		$(conf_set_value .dupmn/dupmn.conf $1 0 1)
+		$(conf_set_value .dupmn/dupmn.conf $PROFILE_NAME 0 1)
 		$(make_chmod_file /usr/bin/$COIN_CLI-all    "#!/bin/bash\nfor (( i=0; i<=0; i++ )) do\n echo -e MN\$i:\n $COIN_CLI-\$i \$@\ndone")
 		$(make_chmod_file /usr/bin/$COIN_DAEMON-all "#!/bin/bash\nfor (( i=0; i<=0; i++ )) do\n echo -e MN\$i:\n $COIN_DAEMON-\$i \$@\ndone")
 		systemctl daemon-reload
 		echo_json "{\"message\":\"dupe/s successfully uninstalled\",\"count\":$DUP_COUNT,\"dupes\":[$(seq -s ',' 1 $DUP_COUNT)]}"
 	else
-		echo -e "Uninstalling ${BLUE}$1${NC} instance ${CYAN}number $2${NC}"
-		wallet_cmd stop $2 > /dev/null
+		echo -e "Uninstalling ${BLUE}$PROFILE_NAME${NC} instance ${CYAN}number $1${NC}"
+		wallet_cmd stop $1 > /dev/null
 		rm -rf /usr/bin/$COIN_CLI-$DUP_COUNT
 		rm -rf /usr/bin/$COIN_DAEMON-$DUP_COUNT
-		$(conf_set_value .dupmn/dupmn.conf $1 $(($DUP_COUNT-1)) 1)
+		$(conf_set_value .dupmn/dupmn.conf $PROFILE_NAME $(($DUP_COUNT-1)) 1)
 		$(make_chmod_file /usr/bin/$COIN_CLI-all    "#!/bin/bash\nfor (( i=0; i<=$(($DUP_COUNT-1)); i++ )) do\n echo -e MN\$i:\n $COIN_CLI-\$i \$@\ndone")
 		$(make_chmod_file /usr/bin/$COIN_DAEMON-all "#!/bin/bash\nfor (( i=0; i<=$(($DUP_COUNT-1)); i++ )) do\n echo -e MN\$i:\n $COIN_DAEMON-\$i \$@\ndone")
-		rm -rf $COIN_FOLDER$2
+		rm -rf $COIN_FOLDER$1
 
-		for (( i=$2; i<=$DUP_COUNT; i++ )); do
+		for (( i=$1; i<=$DUP_COUNT; i++ )); do
 			wallet_cmd stop $i > /dev/null
 		done
-		for (( i=$2+1; i<=$DUP_COUNT; i++ )); do
+		for (( i=$1+1; i<=$DUP_COUNT; i++ )); do
 			echo -e "setting ${CYAN}instance $i${NC} as ${CYAN}instance $(($i-1))${NC}..."
 			mv $COIN_FOLDER$i $COIN_FOLDER$(($i-1))
 			wallet_cmd start $(($i-1)) > /dev/null
@@ -627,7 +624,7 @@ function cmd_uninstall() {
 		systemctl disable $COIN_NAME-$DUP_COUNT.service &> /dev/null
 		rm -rf /etc/systemd/system/$COIN_NAME-$DUP_COUNT.service
 		systemctl daemon-reload
-		echo_json "{\"message\":\"dupe/s successfully uninstalled\",\"count\":1,\"dupes\":[$2]}"
+		echo_json "{\"message\":\"dupe/s successfully uninstalled\",\"count\":1,\"dupes\":[$1]}"
 	fi
 }
 function cmd_bootstrap() {
@@ -788,13 +785,13 @@ function cmd_rpcchange() {
 	fi
 }
 function cmd_systemctlall() {
-	# <$1 = profile_name> | <$2 = command>
+	# <$1 = command>
 
 	trap '' 2
 	if [[ $COIN_SERVICE ]]; then
 		if [[ -f /etc/systemd/system/$COIN_SERVICE ]]; then
-			echo -e "${CYAN}systemctl $2 $COIN_SERVICE${NC}"
-			systemctl $2 $COIN_SERVICE
+			echo -e "${CYAN}systemctl $1 $COIN_SERVICE${NC}"
+			systemctl $1 $COIN_SERVICE
 		else
 			echo -e "${MAGENTA}Main MN service ($COIN_SERVICE) not found in /etc/systemd/system${NC}"
 		fi
@@ -802,8 +799,8 @@ function cmd_systemctlall() {
 		echo -e "${MAGENTA}Main MN service not detected in the profile, applying command to dupes only${NC}"
 	fi
 	for (( i=1; i<=$DUP_COUNT; i++ )); do
-		echo -e "${CYAN}systemctl $2 $COIN_NAME-$i.service${NC}"
-		systemctl $2 $COIN_NAME-$i.service
+		echo -e "${CYAN}systemctl $1 $COIN_NAME-$i.service${NC}"
+		systemctl $1 $COIN_NAME-$i.service
 	done
 	trap 2
 }
@@ -1088,26 +1085,26 @@ function main() {
 		"profdel")
 			exit_no_param "$2" "${YELLOW}dupmn profadd <prof_name>${NC} requires a profile name as parameter"
 			load_profile $2
-			cmd_profdel $2
+			cmd_profdel
 			;;
 		"install")
 			exit_no_param "$2" "${YELLOW}dupmn install <prof_name> [params...]${NC} requires a profile name of an added profile as a parameter"
 			load_profile $2 1
 			opt_install_params "${@:3}"
-			cmd_install $2 $(($DUP_COUNT+1))
+			cmd_install $(($DUP_COUNT+1))
 			;;
 		"reinstall")
 			exit_no_param "$3" "${YELLOW}dupmn reinstall <prof_name> <node> [params...]${NC} requires a profile name and a node number as parameters"
 			load_profile $2 1
 			instance_valid $3
 			opt_install_params "${@:4}"
-			cmd_reinstall $2 $(stoi $3)
+			cmd_reinstall $(stoi $3)
 			;;
 		"uninstall")
 			exit_no_param "$3" "${YELLOW}dupmn uninstall <prof_name> <node|all>${NC} requires a profile name and a node number (or all) as parameters"
 			load_profile $2
 			[[ $3 != "all" ]] && instance_valid $3
-			cmd_uninstall $2 $([[ $3 == "all" ]] && echo "all" || echo $(stoi $3))
+			cmd_uninstall $([[ $3 == "all" ]] && echo "all" || echo $(stoi $3))
 			;;
 		"bootstrap")
 			exit_no_param "$4" "${YELLOW}dupmn bootstrap <prof_name> <node_1> <node_2>${NC} requires a profile name and 2 node numbers as parameters"
@@ -1138,7 +1135,7 @@ function main() {
 		"systemctlall")
 			exit_no_param "$3" "${YELLOW}dupmn systemctlall <prof_name> <command>${NC} requires a profile name and a command as parameters"
 			load_profile $2
-			cmd_systemctlall $2 $3
+			cmd_systemctlall $3
 			;;
 		"list")
 			cmd_list ${@:2}
