@@ -5,7 +5,7 @@
 
 # TODO:
 # - dupmn reinstall => allow main node ??
-# - dupmn install <prof_name> -c NUMBER | --count=NUMBER
+# - dupmn install <prof_name> -c NUMBER | --count=NUMBER ?? => privkey array, print "MN + dupe_offset : privkey[i]"
 # - dupmn any_command 3>&1 &>/dev/null => get a json instead (looot of work)
 #    + general      [001-003] (X)
 #    + load_profile [100-104] (X)
@@ -21,10 +21,11 @@
 #    + ipadd        [using_ip + 700-705] (X)
 #    + ipdel        [using_ip + 700-705] (X)
 #    + rpcchange    [load_profile + select_dupe + 800-802] (X)
-#    + systemctlall [load_profile + ??] ( )
+#    + systemctlall [load_profile] (X)
 #    + list         [none] ( )
 #    + list [prof]  [load_profile in list] ( )
-#    + swapfile     [none] ( )
+#    + swapfile     [900-901] (X)
+#    + checkmem     [none] (X)
 #    + help         [none] (-)
 #    + update       [none] (X)
 #
@@ -803,6 +804,7 @@ function cmd_systemctlall() {
 		systemctl $1 $COIN_NAME-$i.service
 	done
 	trap 2
+	echo_json "{\"message\":\"success\"}"
 }
 function cmd_list() {
 	# [$1* = profile_name]
@@ -874,6 +876,7 @@ function cmd_swapfile() {
 
 	if [[ ! $(is_number $1) ]]; then
 		echo -e "${YELLOW}<size_in_mbytes>${NC} must be a number"
+		echo_json "{\"error\":\"<size_in_mbytes> must be a number\",\"errcode\":900}"
 		return
 	fi
 
@@ -882,6 +885,7 @@ function cmd_swapfile() {
 
 	if [[ $1 -ge $avail_mb ]]; then
 		echo -e "There's only $avail_mb MB available in the hard disk"
+		echo_json "{\"error\":\"not enough available space: $avail_mb MB\",\"errcode\":901}"
 		return
 	fi
 
@@ -891,6 +895,7 @@ function cmd_swapfile() {
 		rm -rf /mnt/dupmn_swapfile
 		sed -i "/\/mnt\/dupmn_swapfile/d" /etc/fstab
 		echo -e "Swapfile deleted"
+		echo_json "{\"message\":\"swapfile deleted\"}"
 	else
 		echo -e "Generating swapfile, this may take some time depending on the size..."
 		echo -e "$(($1 * 1024 * 1024)) bytes swapfile"
@@ -901,27 +906,28 @@ function cmd_swapfile() {
 		/mnt/dupmn_swapfile swap swap defaults 0 0 &> /dev/null
 		[[ ! $(cat /etc/fstab | grep "/mnt/dupmn_swapfile") ]] && echo "/mnt/dupmn_swapfile none swap 0 0" >> /etc/fstab
 		echo -e "Swapfile new size = ${GREEN}$1 MB${NC}"
+		echo_json "{\"message\":\"swapfile created\"}"
 	fi
 
 	echo -e "Use ${YELLOW}swapon -s${NC} to see the changes of your swapfile and ${YELLOW}free -m${NC} to see the total available memory"
 }
 function cmd_checkmem() {
-	local checks=$(ps -o %mem,command ax | awk '$1 != 0.0 { print $0 }')
-	local daemons=$(echo "$checks" | awk '{ print $2 }' | tail -n +2 | grep -v python3 | awk -F"/" '{ print $NF }')
-	local output=""
+	local checks=$(ps -o %mem,command ax | awk '$1 >= 0.1 && $2 ~ /.d$/ && $3 == "-daemon" { print $1 " " $2 }' | awk -F"/" '{ print $NF " " $1 }')
+	local daemons=$(echo "$checks" | awk '{ print $1 }' | sort -u)
+	output=()
 
-	for x in $(echo "$daemons" | sort | uniq); do
-		output+="$x $(echo "$daemons" | grep "$x" | wc -l) $(echo "$checks" | grep "$x" | awk '{ SUM += $1 } END { print SUM }') "
-	done
-	output=$(echo -e $output | xargs -n3 | sort -b -k3 -r -g)
-
-	local len_1=$(echo -e "$output" | awk '{ print $1 }' | wc -L)
-	local len_2=$(echo -e "$output" | awk '{ print $2 }' | wc -L)
-	echo "$output" | while read x; do
-		printf "%-$((len_1))s %-$((len_2+2))s : %s %%\n" "$(echo $x | awk '{ print $1 }')" "($(echo $x | awk '{ print $2 }'))" "$(echo $x | awk '{ print $3 }')"
+	for x in $daemons; do # ( "name count usage", ... )
+		output+=( "$x $(echo "$checks" | grep -c "$x") $(echo "$checks" | grep "$x" | awk '{ SUM += $2 } END { print SUM }')" )
 	done
 
-	echo "$checks" | awk '{ SUM += $1 } END { print "Total mem. usage : "SUM" %" }'
+	local npadd=$(echo "$daemons" | wc -L)
+	local zpadd=$(($(echo "$output" | awk '{ print $2 }' | wc -L) + 1))
+	for x in "${output[@]}"; do
+		printf "%-$((npadd))s $(seq -s " " $((zpadd - $(echo $x | awk '{ print $2 }' | wc -L))) | tr -d "[0-9]")(%s) : %s %%\n" $x
+	done
+
+	echo "$checks" | awk '{ SUM += $2 } END { print "Total mem. usage : "SUM" %" }'
+	echo_json "{\"daemons\":[$(array_join , $(printf "%s\n" "${output[@]}" | awk '{ print "{\"name\":\"" $1 "\",\"count\":" $2 ",\"mem\":" $3 "}" }'))],\"total_mem\":$(echo "$checks" | awk '{ SUM += $2 } END { print SUM }')}"
 }
 function cmd_help() {
 	echo -e "Options:\
