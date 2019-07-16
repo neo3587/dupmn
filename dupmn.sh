@@ -4,8 +4,10 @@
 # Source: https://github.com/neo3587/dupmn
 
 # TODO:
+# - dupmn uninstall <prof_name> <number> optimization on O(n) wallet reallocation
 # - dupmn reinstall => allow main node ??
 # - dupmn install <prof_name> -c NUMBER | --count=NUMBER ?? => privkey array, print "MN + dupe_offset : privkey[i]"
+# - check and test memory reduction .conf parameters
 # - dupmn any_command 3>&1 &>/dev/null => get a json instead (looot of work)
 #    + general      [001-003] (X)
 #    + load_profile [100-104] (X)
@@ -613,14 +615,21 @@ function cmd_uninstall() {
 		$(make_chmod_file /usr/bin/$COIN_DAEMON-all "#!/bin/bash\nfor (( i=0; i<=$(($DUP_COUNT-1)); i++ )) do\n echo -e MN\$i:\n $COIN_DAEMON-\$i \$@\ndone")
 		rm -rf $COIN_FOLDER$1
 
+		# TODO: async stop
+
 		for (( i=$1; i<=$DUP_COUNT; i++ )); do
 			wallet_cmd stop $i > /dev/null
 		done
+
+		# TODO: await stop & move
+
 		for (( i=$1+1; i<=$DUP_COUNT; i++ )); do
 			echo -e "setting ${CYAN}instance $i${NC} as ${CYAN}instance $(($i-1))${NC}..."
 			mv $COIN_FOLDER$i $COIN_FOLDER$(($i-1))
 			wallet_cmd start $(($i-1)) > /dev/null
 		done
+
+		# TODO: async start & wait
 
 		systemctl disable $COIN_NAME-$DUP_COUNT.service &> /dev/null
 		rm -rf /etc/systemd/system/$COIN_NAME-$DUP_COUNT.service
@@ -821,16 +830,21 @@ function cmd_list() {
 	}
 
 	local -A conf=$(get_conf .dupmn/dupmn.conf)
+	local js_profs=()
+
 	if [ ${#conf[@]} -eq 0 ]; then
 		echo -e "(no profiles added)"
+		echo_json "{\"profs\":[]}"
 		return
 	fi
 
 	if [[ ! $1 ]]; then
 		for var in "${!conf[@]}"; do
 			echo -e "${CYAN}$var${NC} : ${conf[$var]}"
+			js_profs+=("{\"name\":\"$var\",\"count\":${conf[$var]}}")
 		done
 		echo -e "Total count : $(echo ${conf[@]} | tr ' ' '\n' | cut -d '=' -f2 | awk '{ SUM += $1 } END { print SUM }') dupes (+ $(echo ${#conf[@]}) main nodes)"
+		echo_json "{\"profs\":[$(array_join "," ${js_profs[@]})]}"
 	else
 		local args=()
 		local params=$(echo "$@" | tr ' ' '\n' | grep '^-' | sed 's/^-//g')
@@ -851,6 +865,7 @@ function cmd_list() {
 			esac
 		done
 
+		local js_dupes=()
 		local profs=$(echo "$@" | tr ' ' '\n' | sed '/^-/d')
 		[[ ! $profs ]] && profs="${!conf[@]}"
 		[[ ${#args[@]} -eq 0 ]] && args=(s i r p)
@@ -869,6 +884,7 @@ function cmd_list() {
 			fi
 			[[ $(echo "$profs" | grep -o ' ' | wc -l) -gt 1 ]] && echo -e ""
 		done
+		# echo json "{\"profs\":[ { \"name\": \"prof_1\", \"count\": count, \"mn\": [ { \"id\": number, \"param1\": param1, \"param2\": param2, ... }, ... ] }, ... ]}"
 	fi
 }
 function cmd_swapfile() {
