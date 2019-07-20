@@ -4,6 +4,7 @@
 # Source: https://github.com/neo3587/dupmn
 
 # TODO:
+# - dupmn uninstall <prof_name> <number...> => $(echo {3..8}) || seq -s ' ' 3 8
 # - dupmn uninstall <prof_name> <number> optimization on O(n) wallet reallocation
 # - dupmn reinstall => allow main node ??
 # - dupmn install <prof_name> -c NUMBER | --count=NUMBER ?? => privkey array, print "MN + dupe_offset : privkey[i]"
@@ -165,7 +166,7 @@ function find_port() {
 		done
 	}
 
-	local dup_ports=""
+	local dup_ports="$(conf_get_value $COIN_FOLDER/$COIN_CONFIG port) "
 	for (( i=1; i<=$DUP_COUNT; i++ )); do
 		dup_ports="$dup_ports $(conf_get_value $COIN_FOLDER$i/$COIN_CONFIG rpcport) "
 	done
@@ -346,21 +347,21 @@ function cmd_profadd() {
 		return
 	fi
 
-	[[ ! -d ".dupmn" ]] && mkdir ".dupmn"
-	[[ ! -f ".dupmn/dupmn.conf" ]] && touch ".dupmn/dupmn.conf"
-	[[ $(conf_get_value .dupmn/dupmn.conf $prof_name) ]] || $(conf_set_value .dupmn/dupmn.conf $prof_name 0 1)
+	[[ ! -d ~/.dupmn ]] && mkdir ~/.dupmn
+	[[ ! -f ~/.dupmn/dupmn.conf ]] && touch ~/.dupmn/dupmn.conf
+	[[ $(conf_get_value ~/.dupmn/dupmn.conf $prof_name) ]] || $(conf_set_value ~/.dupmn/dupmn.conf $prof_name 0 1)
 
-	cp "$1" ".dupmn/$prof_name"
+	cp $1 ~/.dupmn/$prof_name
 
 	local fix_path=${prof[COIN_PATH]}
 	local fix_folder=${prof[COIN_FOLDER]}
 
 	if [[ ${fix_path:${#fix_path}-1:1} != "/" ]]; then
-		sed -i "/^COIN_PATH=/s/=.*/=\"${fix_path//"/"/"\/"}\/\"/" .dupmn/$prof_name
+		sed -i "/^COIN_PATH=/s/=.*/=\"${fix_path//"/"/"\/"}\/\"/" ~/.dupmn/$prof_name
 	fi
 	if [[ ${fix_folder:${#fix_folder}-1:1} == "/" ]]; then
 		fix_folder=${fix_folder::-1}
-		sed -i "/^COIN_FOLDER=/s/=.*/=\"${fix_folder//"/"/"\/"}\"/" .dupmn/$prof_name
+		sed -i "/^COIN_FOLDER=/s/=.*/=\"${fix_folder//"/"/"\/"}\"/" ~/.dupmn/$prof_name
 	fi
 
 	echo -e "${BLUE}$prof_name${NC} profile successfully added, use ${GREEN}dupmn install $prof_name${NC} to create a new instance of the masternode"
@@ -378,15 +379,15 @@ function cmd_profadd() {
 				read -r -p "Do you want to use it for the main MN? [Y/n]`echo $'\n> '`" yesno
 				[[ $yesno =~ ^[Yy]$|^[Yy][Ee][Ss]$ ]] && echo -e "${CYAN}${prof[COIN_NAME]}.service${NC} set as main node service" || return
 			fi
-			conf_set_value .dupmn/$prof_name "COIN_SERVICE" "\"${prof[COIN_NAME]}.service\"" "1"
+			conf_set_value ~/.dupmn/$prof_name "COIN_SERVICE" "\"${prof[COIN_NAME]}.service\"" 1
 			retcode=1
-		elif [[ $(load_profile "$prof_name" "1" 3>/dev/null) ]]; then
+		elif [[ $(load_profile "$prof_name" 1 3>/dev/null) ]]; then
 			echo -e "${RED}ERROR:${NC} Can't find the binaries of the main node to make the service, make sure that you have installed the masternode and retry this command to create a service"
 			retcode=2
 		else
-			load_profile "$prof_name" "1" 3>/dev/null
+			load_profile "$prof_name" 1 3>/dev/null
 			configure_systemd
-			conf_set_value .dupmn/$prof_name "COIN_SERVICE" "\"${prof[COIN_NAME]}.service\"" "1"
+			conf_set_value ~/.dupmn/$prof_name "COIN_SERVICE" "\"${prof[COIN_NAME]}.service\"" 1
 			echo -e "Service for ${BLUE}$prof_name${NC} main node created"
 			retcode=3
 		fi
