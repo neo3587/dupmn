@@ -25,7 +25,7 @@
 #    + ipdel        [using_ip + 700-705] (X)
 #    + rpcchange    [load_profile + select_dupe + 800-802] (X)
 #    + systemctlall [load_profile] (X)
-#    + list         [none] ( )
+#    + list         [none] (X)
 #    + list [prof]  [load_profile in list] ( )
 #    + swapfile     [900-901] (X)
 #    + checkmem     [none] (X)
@@ -166,7 +166,9 @@ function find_port() {
 		done
 	}
 
-	local dup_ports="$(conf_get_value $COIN_FOLDER/$COIN_CONFIG port) "
+	local dup_ports="$(conf_get_value $COIN_FOLDER/$COIN_CONFIG port)"
+	[[ ! "$dup_ports" =~ ^[0-9]+$ ]] && dup_ports=$(conf_get_value $COIN_FOLDER/$COIN_CONFIG "masternodeaddr" | rev | cut -d : -f1 | rev)
+	[[ ! "$dup_ports" =~ ^[0-9]+$ ]] && dup_ports=$(conf_get_value $COIN_FOLDER/$COIN_CONFIG "externalip"     | rev | cut -d : -f1 | rev)
 	for (( i=1; i<=$DUP_COUNT; i++ )); do
 		dup_ports="$dup_ports $(conf_get_value $COIN_FOLDER$i/$COIN_CONFIG rpcport) "
 	done
@@ -819,15 +821,35 @@ function cmd_systemctlall() {
 function cmd_list() {
 	# [$1* = profile_name]
 
+	### JSON 
+	#	{
+	#		"profs": [
+	#			{
+	#				"name": "prof_name",
+	#				"count": count,
+	#				"mn": [
+	#					{
+	#						"id": dupe_number,
+	#						"param1": param1,
+	#						"param2": param2,
+	#						...
+	#					}
+	#				]
+	#			}
+	#		]
+	#	}
+	#
+	#	apply mn opt params in print_dup_info()
+	#	array_join "mn" & array_join "profs" or single str concat ?
+	###
+
 	function print_dup_info() {
-		local dup_ip=$(conf_get_value $COIN_FOLDER$1/$COIN_CONFIG "masternodeaddr")
-		local mnstatus=$(try_cmd $(exec_coin cli $1) "masternodedebug" "masternode debug")
-		[[ ${args[@]} =~ "o" ]] && echo -e "  online  : $([[ $mnstatus ]] && echo ${BLUE}true${NC} || echo ${RED}false${NC})"
-		[[ ${args[@]} =~ "b" ]] && echo -e "  block   : $($(exec_coin cli $1) getblockcount)"
-		[[ ${args[@]} =~ "s" ]] && echo -e "  status  : $([[ $mnstatus ]] && echo ${GRAY}${mnstatus//[$'\r\n']}${NC} || echo ${RED}\(disabled\)${NC})"
-		[[ ${args[@]} =~ "i" ]] && echo -e "  ip      : ${YELLOW}$([[ ! $dup_ip ]] && echo $(conf_get_value $COIN_FOLDER$1/$COIN_CONFIG "externalip") || echo "$dup_ip")${NC}"
-		[[ ${args[@]} =~ "r" ]] && echo -e "  rpcport : ${MAGENTA}$(conf_get_value $COIN_FOLDER$1/$COIN_CONFIG rpcport)${NC}"
-		[[ ${args[@]} =~ "p" ]] && echo -e "  privkey : ${GREEN}$(conf_get_value $COIN_FOLDER$1/$COIN_CONFIG masternodeprivkey)${NC}"
+		# <$1 = json_key> | <$2 = value_quotes> | <$3 = str> | <$4 = strval>
+		echo "$3$4"
+		if [[ -t 3 ]]; then
+			local json_val=$(echo "$4" | sed 's/\\e\[[0-9;]*m//g')\"
+			# json+=("\"$1\":$([[ $2 == 1 ]] && echo "\"$json_val\"" || echo "$json_val")")
+		fi
 	}
 
 	local -A conf=$(get_conf .dupmn/dupmn.conf)
@@ -875,17 +897,24 @@ function cmd_list() {
 			local check_prof=$(load_profile $prof 1)
 			if [[ $check_prof ]]; then
 				echo -e "$check_prof"
+				# json+=(err)
 			else
 				load_profile $prof 1
 				echo -e "${BLUE}$prof${NC}: ${CYAN}$DUP_COUNT${NC} created nodes with dupmn"
 				echo -e "${DARKCYAN}Main Node:${NC}\n$(print_dup_info)"
 				for (( i=1; i<=$DUP_COUNT; i++ )); do
-					echo -e "${DARKCYAN}MN$i:${NC}\n$(print_dup_info $i)"
+					# json +=("name": $prof", "count": $DUP_COUNT)
+					echo -e "${DARKCYAN}MN$i:${NC}"
+					[[ ${args[@]} =~ "o" ]] && print_dup_info "online"  0 "  online  : " "$([[ $(exec_coin cli $i) getblockcount) ]] && echo ${BLUE}true${NC} || echo ${RED}false${NC})"
+					[[ ${args[@]} =~ "b" ]] && print_dup_info "block"   0 "  block   : " "$($(exec_coin cli $i) getblockcount)"
+					[[ ${args[@]} =~ "s" ]] && print_dup_info "status"  1 "  status  : " "$([[ $(try_cmd $(exec_coin cli $i) "masternodedebug" "masternode debug") ]] && echo ${GRAY}${mnstatus//[$'\r\n']}${NC} || echo ${RED}\(disabled\)${NC})"
+					[[ ${args[@]} =~ "i" ]] && print_dup_info "ip"      1 "  ip      : " "${YELLOW}$(conf_get_value $COIN_FOLDER$i/$COIN_CONFIG $([[ $(conf_get_value $COIN_FOLDER$i/$COIN_CONFIG "masternodeaddr") ]] && echo "masternodeaddr" || echo "externalip"))${NC}"
+					[[ ${args[@]} =~ "r" ]] && print_dup_info "rpcport" 0 "  rpcport : " "${MAGENTA}$(conf_get_value $COIN_FOLDER$i/$COIN_CONFIG rpcport)${NC}"
+					[[ ${args[@]} =~ "p" ]] && print_dup_info "privkey" 1 "  privkey : " "${GREEN}$(conf_get_value $COIN_FOLDER$i/$COIN_CONFIG masternodeprivkey)${NC}"
 				done
 			fi
 			[[ $(echo "$profs" | grep -o ' ' | wc -l) -gt 1 ]] && echo -e ""
 		done
-		# echo json "{\"profs\":[ { \"name\": \"prof_1\", \"count\": count, \"mn\": [ { \"id\": number, \"param1\": param1, \"param2\": param2, ... }, ... ] }, ... ]}"
 	fi
 }
 function cmd_swapfile() {
