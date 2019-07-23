@@ -843,13 +843,32 @@ function cmd_list() {
 	#	array_join "mn" & array_join "profs" or single str concat ?
 	###
 
-	function print_dup_info() {
+	function print_param_info() {
 		# <$1 = json_key> | <$2 = value_quotes> | <$3 = str> | <$4 = strval>
-		echo "$3$4"
+		echo -e "$3$4"
 		if [[ -t 3 ]]; then
 			local json_val=$(echo "$4" | sed 's/\\e\[[0-9;]*m//g')\"
 			# json+=("\"$1\":$([[ $2 == 1 ]] && echo "\"$json_val\"" || echo "$json_val")")
 		fi
+	}
+
+	function print_dup_info() {
+		local dup_ip=$(conf_get_value $COIN_FOLDER$1/$COIN_CONFIG "masternodeaddr")
+		local mnstatus=$(try_cmd $(exec_coin cli $1) "masternodedebug" "masternode debug")
+		[[ ${args[@]} =~ "o" ]] && echo -e "  online  : $([[ $mnstatus ]] && echo ${BLUE}true${NC} || echo ${RED}false${NC})"
+		[[ ${args[@]} =~ "b" ]] && echo -e "  block   : $($(exec_coin cli $1) getblockcount)"
+		[[ ${args[@]} =~ "s" ]] && echo -e "  status  : $([[ $mnstatus ]] && echo ${GRAY}${mnstatus//[$'\r\n']}${NC} || echo ${RED}\(disabled\)${NC})"
+		[[ ${args[@]} =~ "i" ]] && echo -e "  ip      : ${YELLOW}$([[ ! $dup_ip ]] && echo $(conf_get_value $COIN_FOLDER$1/$COIN_CONFIG "externalip") || echo "$dup_ip")${NC}"
+		[[ ${args[@]} =~ "r" ]] && echo -e "  rpcport : ${MAGENTA}$(conf_get_value $COIN_FOLDER$1/$COIN_CONFIG rpcport)${NC}"
+		[[ ${args[@]} =~ "p" ]] && echo -e "  privkey : ${GREEN}$(conf_get_value $COIN_FOLDER$1/$COIN_CONFIG masternodeprivkey)${NC}"
+		# json +=("name": $prof", "count": $DUP_COUNT)
+		#echo -e "${DARKCYAN}MN$i:${NC}"
+		#[[ ${args[@]} =~ "o" ]] && print_param_info "online"  0 "  online  : " "$([[ $(exec_coin cli $i) getblockcount) ]] && echo ${BLUE}true${NC} || echo ${RED}false${NC})"
+		#[[ ${args[@]} =~ "b" ]] && print_param_info "block"   0 "  block   : " "$($(exec_coin cli $i) getblockcount)"
+		#[[ ${args[@]} =~ "s" ]] && print_param_info "status"  1 "  status  : " "$([[ $(try_cmd $(exec_coin cli $i) "masternodedebug" "masternode debug") ]] && echo ${GRAY}${mnstatus//[$'\r\n']}${NC} || echo ${RED}\(disabled\)${NC})"
+		#[[ ${args[@]} =~ "i" ]] && print_param_info "ip"      1 "  ip      : " "${YELLOW}$(conf_get_value $COIN_FOLDER$i/$COIN_CONFIG $([[ $(conf_get_value $COIN_FOLDER$i/$COIN_CONFIG "masternodeaddr") ]] && echo "masternodeaddr" || echo "externalip"))${NC}"
+		#[[ ${args[@]} =~ "r" ]] && print_param_info "rpcport" 0 "  rpcport : " "${MAGENTA}$(conf_get_value $COIN_FOLDER$i/$COIN_CONFIG rpcport)${NC}"
+		#[[ ${args[@]} =~ "p" ]] && print_param_info "privkey" 1 "  privkey : " "${GREEN}$(conf_get_value $COIN_FOLDER$i/$COIN_CONFIG masternodeprivkey)${NC}"
 	}
 
 	local -A conf=$(get_conf .dupmn/dupmn.conf)
@@ -903,14 +922,7 @@ function cmd_list() {
 				echo -e "${BLUE}$prof${NC}: ${CYAN}$DUP_COUNT${NC} created nodes with dupmn"
 				echo -e "${DARKCYAN}Main Node:${NC}\n$(print_dup_info)"
 				for (( i=1; i<=$DUP_COUNT; i++ )); do
-					# json +=("name": $prof", "count": $DUP_COUNT)
-					echo -e "${DARKCYAN}MN$i:${NC}"
-					[[ ${args[@]} =~ "o" ]] && print_dup_info "online"  0 "  online  : " "$([[ $(exec_coin cli $i) getblockcount) ]] && echo ${BLUE}true${NC} || echo ${RED}false${NC})"
-					[[ ${args[@]} =~ "b" ]] && print_dup_info "block"   0 "  block   : " "$($(exec_coin cli $i) getblockcount)"
-					[[ ${args[@]} =~ "s" ]] && print_dup_info "status"  1 "  status  : " "$([[ $(try_cmd $(exec_coin cli $i) "masternodedebug" "masternode debug") ]] && echo ${GRAY}${mnstatus//[$'\r\n']}${NC} || echo ${RED}\(disabled\)${NC})"
-					[[ ${args[@]} =~ "i" ]] && print_dup_info "ip"      1 "  ip      : " "${YELLOW}$(conf_get_value $COIN_FOLDER$i/$COIN_CONFIG $([[ $(conf_get_value $COIN_FOLDER$i/$COIN_CONFIG "masternodeaddr") ]] && echo "masternodeaddr" || echo "externalip"))${NC}"
-					[[ ${args[@]} =~ "r" ]] && print_dup_info "rpcport" 0 "  rpcport : " "${MAGENTA}$(conf_get_value $COIN_FOLDER$i/$COIN_CONFIG rpcport)${NC}"
-					[[ ${args[@]} =~ "p" ]] && print_dup_info "privkey" 1 "  privkey : " "${GREEN}$(conf_get_value $COIN_FOLDER$i/$COIN_CONFIG masternodeprivkey)${NC}"
+					echo -e "${DARKCYAN}MN$i:${NC}\n$(print_dup_info $i)"
 				done
 			fi
 			[[ $(echo "$profs" | grep -o ' ' | wc -l) -gt 1 ]] && echo -e ""
