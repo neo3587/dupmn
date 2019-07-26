@@ -403,7 +403,11 @@ function cmd_profdel() {
 	if [[ $DUP_COUNT -gt 0 ]]; then
 		if [[ -t 1 ]]; then
 			read -r -p "All the dupes created with this profile will be deleted, are you sure to apply this command? [Y/n]`echo $'\n> '`" yesno
-			[[ ! $yesno =~ ^[Yy]$|^[Yy][Ee][Ss]$ ]] && echo -e "Profile deletion cancelled" && return
+			if [[ ! $yesno =~ ^[Yy]$|^[Yy][Ee][Ss]$ ]]; then
+				echo -e "Profile deletion cancelled"
+				echo_json "{\"message\":\"profile deletion cancelled\",\"deleted\":false,\"count\":0}"
+				return
+			fi
 		fi
 		cmd_uninstall $1 all 3>/dev/null
 	fi
@@ -416,7 +420,7 @@ function cmd_profdel() {
 	rm -rf /usr/bin/$COIN_CLI-all
 	rm -rf .dupmn/$PROFILE_NAME
 
-	echo_json "{\"message\":\"profile successfully deleted\",\"count\":$deleted_dupes}"
+	echo_json "{\"message\":\"profile successfully deleted\",\"deleted\":true,\"count\":$deleted_dupes}"
 }
 function cmd_install() {
 	# <$1 = instance_number>
@@ -821,54 +825,24 @@ function cmd_systemctlall() {
 function cmd_list() {
 	# [$1* = profile_name]
 
-	### JSON 
-	#	{
-	#		"profs": [
-	#			{
-	#				"name": "prof_name",
-	#				"count": count,
-	#				"mn": [
-	#					{
-	#						"id": dupe_number,
-	#						"param1": param1,
-	#						"param2": param2,
-	#						...
-	#					}
-	#				]
-	#			}
-	#		]
-	#	}
-	#
-	#	apply mn opt params in print_dup_info()
-	#	array_join "mn" & array_join "profs" or single str concat ?
-	###
-
 	function print_param_info() {
 		# <$1 = json_key> | <$2 = value_quotes> | <$3 = str> | <$4 = strval>
 		echo -e "$3$4"
-		if [[ -t 3 ]]; then
-			local json_val=$(echo "$4" | sed 's/\\e\[[0-9;]*m//g')\"
-			# json+=("\"$1\":$([[ $2 == 1 ]] && echo "\"$json_val\"" || echo "$json_val")")
-		fi
+		local json_val=$(echo "$4" | sed 's/\\e\[[0-9;]*m//g')
+		js_params+=("\"$1\":$([[ $2 == 1 ]] && echo "\"$json_val\"" || echo "$json_val")")
 	}
 
 	function print_dup_info() {
-		local dup_ip=$(conf_get_value $COIN_FOLDER$1/$COIN_CONFIG "masternodeaddr")
-		local mnstatus=$(try_cmd $(exec_coin cli $1) "masternodedebug" "masternode debug")
-		[[ ${args[@]} =~ "o" ]] && echo -e "  online  : $([[ $mnstatus ]] && echo ${BLUE}true${NC} || echo ${RED}false${NC})"
-		[[ ${args[@]} =~ "b" ]] && echo -e "  block   : $($(exec_coin cli $1) getblockcount)"
-		[[ ${args[@]} =~ "s" ]] && echo -e "  status  : $([[ $mnstatus ]] && echo ${GRAY}${mnstatus//[$'\r\n']}${NC} || echo ${RED}\(disabled\)${NC})"
-		[[ ${args[@]} =~ "i" ]] && echo -e "  ip      : ${YELLOW}$([[ ! $dup_ip ]] && echo $(conf_get_value $COIN_FOLDER$1/$COIN_CONFIG "externalip") || echo "$dup_ip")${NC}"
-		[[ ${args[@]} =~ "r" ]] && echo -e "  rpcport : ${MAGENTA}$(conf_get_value $COIN_FOLDER$1/$COIN_CONFIG rpcport)${NC}"
-		[[ ${args[@]} =~ "p" ]] && echo -e "  privkey : ${GREEN}$(conf_get_value $COIN_FOLDER$1/$COIN_CONFIG masternodeprivkey)${NC}"
-		# json +=("name": $prof", "count": $DUP_COUNT)
-		#echo -e "${DARKCYAN}MN$i:${NC}"
-		#[[ ${args[@]} =~ "o" ]] && print_param_info "online"  0 "  online  : " "$([[ $(exec_coin cli $i) getblockcount) ]] && echo ${BLUE}true${NC} || echo ${RED}false${NC})"
-		#[[ ${args[@]} =~ "b" ]] && print_param_info "block"   0 "  block   : " "$($(exec_coin cli $i) getblockcount)"
-		#[[ ${args[@]} =~ "s" ]] && print_param_info "status"  1 "  status  : " "$([[ $(try_cmd $(exec_coin cli $i) "masternodedebug" "masternode debug") ]] && echo ${GRAY}${mnstatus//[$'\r\n']}${NC} || echo ${RED}\(disabled\)${NC})"
-		#[[ ${args[@]} =~ "i" ]] && print_param_info "ip"      1 "  ip      : " "${YELLOW}$(conf_get_value $COIN_FOLDER$i/$COIN_CONFIG $([[ $(conf_get_value $COIN_FOLDER$i/$COIN_CONFIG "masternodeaddr") ]] && echo "masternodeaddr" || echo "externalip"))${NC}"
-		#[[ ${args[@]} =~ "r" ]] && print_param_info "rpcport" 0 "  rpcport : " "${MAGENTA}$(conf_get_value $COIN_FOLDER$i/$COIN_CONFIG rpcport)${NC}"
-		#[[ ${args[@]} =~ "p" ]] && print_param_info "privkey" 1 "  privkey : " "${GREEN}$(conf_get_value $COIN_FOLDER$i/$COIN_CONFIG masternodeprivkey)${NC}"
+		# [$1 = dupe]
+		local js_params=("\"id\":$([[ $1 ]] && echo $1 || echo 0)")
+		local mn_status="$(try_cmd $(exec_coin cli $i) "masternodedebug" "masternode debug")"
+		[[ ${args[@]} =~ "o" ]] && print_param_info "online"  0 "  online  : " "$([[ $mn_status ]] && echo ${BLUE}true${NC} || echo ${RED}false${NC})"
+		[[ ${args[@]} =~ "b" ]] && print_param_info "block"   0 "  block   : " "$($(exec_coin cli $i) getblockcount)"
+		[[ ${args[@]} =~ "s" ]] && print_param_info "status"  1 "  status  : " "$([[ $mn_status ]] && echo ${GRAY}${mn_status//[$'\r\n']}${NC} || echo ${RED}\(disabled\)${NC})"
+		[[ ${args[@]} =~ "i" ]] && print_param_info "ip"      1 "  ip      : " "${YELLOW}$(conf_get_value $COIN_FOLDER$i/$COIN_CONFIG $([[ $(conf_get_value $COIN_FOLDER$i/$COIN_CONFIG "masternodeaddr") ]] && echo "masternodeaddr" || echo "externalip"))${NC}"
+		[[ ${args[@]} =~ "r" ]] && print_param_info "rpcport" 0 "  rpcport : " "${MAGENTA}$(conf_get_value $COIN_FOLDER$i/$COIN_CONFIG rpcport)${NC}"
+		[[ ${args[@]} =~ "p" ]] && print_param_info "privkey" 1 "  privkey : " "${GREEN}$(conf_get_value $COIN_FOLDER$i/$COIN_CONFIG masternodeprivkey)${NC}"
+		js_dupes+=("{$(array_join , "${js_params[@]}")}")
 	}
 
 	local -A conf=$(get_conf .dupmn/dupmn.conf)
@@ -907,26 +881,30 @@ function cmd_list() {
 			esac
 		done
 
-		local js_dupes=()
 		local profs=$(echo "$@" | tr ' ' '\n' | sed '/^-/d')
 		[[ ! $profs ]] && profs="${!conf[@]}"
 		[[ ${#args[@]} -eq 0 ]] && args=(s i r p)
 
 		for prof in $profs; do
-			local check_prof=$(load_profile $prof 1)
+			local check_prof=$(load_profile $prof 1 3> /dev/null)
 			if [[ $check_prof ]]; then
 				echo -e "$check_prof"
-				# json+=(err)
+				js_profs+=("{\"name\":\"$prof\",\"err\":\"$check_prof\"}")
 			else
 				load_profile $prof 1
+				local js_dupes=()
 				echo -e "${BLUE}$prof${NC}: ${CYAN}$DUP_COUNT${NC} created nodes with dupmn"
-				echo -e "${DARKCYAN}Main Node:${NC}\n$(print_dup_info)"
+				echo -e "${DARKCYAN}Main Node:${NC}"
+				print_dup_info
 				for (( i=1; i<=$DUP_COUNT; i++ )); do
-					echo -e "${DARKCYAN}MN$i:${NC}\n$(print_dup_info $i)"
+					echo -e "${DARKCYAN}MN$i:${NC}"
+					print_dup_info $i
 				done
+				js_profs+=("{\"name\":\"$prof\",\"count\":$DUP_COUNT,\"mn\":[$(array_join , "${js_dupes[@]}")]}")
 			fi
 			[[ $(echo "$profs" | grep -o ' ' | wc -l) -gt 1 ]] && echo -e ""
 		done
+		echo_json "{\"profs\":[$(array_join , "${js_profs[@]}")]}"
 	fi
 }
 function cmd_swapfile() {
