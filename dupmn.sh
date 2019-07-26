@@ -9,29 +9,7 @@
 # - dupmn reinstall => allow main node ??
 # - dupmn install <prof_name> -c NUMBER | --count=NUMBER ?? => privkey array, print "MN + dupe_offset : privkey[i]"
 # - check and test memory reduction .conf parameters
-# - dupmn any_command 3>&1 &>/dev/null => get a json instead (looot of work)
-#    + general      [001-003] (X)
-#    + load_profile [100-104] (X)
-#    + select_dupe  [200-202] (X)
-#    + using_ip     [300] (X)
-#    + profadd      [400-403] (X)
-#    + profdel      [load_profile] (X)
-#    + install      [load_profile + using_ip + 500] (X)
-#    + reinstall    [install] (X)
-#    + uninstall    [load_profile + select_dupe] (X)
-#    + bootstrap    [load_profile + select_dupe + 600-601] (X)
-#    + iplist       [none] (X)
-#    + ipadd        [using_ip + 700-705] (X)
-#    + ipdel        [using_ip + 700-705] (X)
-#    + rpcchange    [load_profile + select_dupe + 800-802] (X)
-#    + systemctlall [load_profile] (X)
-#    + list         [none] (X)
-#    + list [prof]  [load_profile in list] ( )
-#    + swapfile     [900-901] (X)
-#    + checkmem     [none] (X)
-#    + help         [none] (-)
-#    + update       [none] (X)
-#
+# - check dupmn list [prof] JSON API bugs on unexpected MN values
 
 
 readonly GRAY='\e[1;30m'
@@ -835,13 +813,13 @@ function cmd_list() {
 	function print_dup_info() {
 		# [$1 = dupe]
 		local js_params=("\"id\":$([[ $1 ]] && echo $1 || echo 0)")
-		local mn_status="$(try_cmd $(exec_coin cli $i) "masternodedebug" "masternode debug")"
+		local mn_status="$(try_cmd $(exec_coin cli $1) "masternodedebug" "masternode debug")"
 		[[ ${args[@]} =~ "o" ]] && print_param_info "online"  0 "  online  : " "$([[ $mn_status ]] && echo ${BLUE}true${NC} || echo ${RED}false${NC})"
-		[[ ${args[@]} =~ "b" ]] && print_param_info "block"   0 "  block   : " "$($(exec_coin cli $i) getblockcount)"
+		[[ ${args[@]} =~ "b" ]] && print_param_info "block"   0 "  block   : " "$($(exec_coin cli $1) getblockcount)"
 		[[ ${args[@]} =~ "s" ]] && print_param_info "status"  1 "  status  : " "$([[ $mn_status ]] && echo ${GRAY}${mn_status//[$'\r\n']}${NC} || echo ${RED}\(disabled\)${NC})"
-		[[ ${args[@]} =~ "i" ]] && print_param_info "ip"      1 "  ip      : " "${YELLOW}$(conf_get_value $COIN_FOLDER$i/$COIN_CONFIG $([[ $(conf_get_value $COIN_FOLDER$i/$COIN_CONFIG "masternodeaddr") ]] && echo "masternodeaddr" || echo "externalip"))${NC}"
-		[[ ${args[@]} =~ "r" ]] && print_param_info "rpcport" 0 "  rpcport : " "${MAGENTA}$(conf_get_value $COIN_FOLDER$i/$COIN_CONFIG rpcport)${NC}"
-		[[ ${args[@]} =~ "p" ]] && print_param_info "privkey" 1 "  privkey : " "${GREEN}$(conf_get_value $COIN_FOLDER$i/$COIN_CONFIG masternodeprivkey)${NC}"
+		[[ ${args[@]} =~ "i" ]] && print_param_info "ip"      1 "  ip      : " "${YELLOW}$(conf_get_value $COIN_FOLDER$1/$COIN_CONFIG $([[ $(conf_get_value $COIN_FOLDER$1/$COIN_CONFIG "masternodeaddr") ]] && echo "masternodeaddr" || echo "externalip"))${NC}"
+		[[ ${args[@]} =~ "r" ]] && print_param_info "rpcport" 0 "  rpcport : " "${MAGENTA}$(conf_get_value $COIN_FOLDER$1/$COIN_CONFIG rpcport)${NC}"
+		[[ ${args[@]} =~ "p" ]] && print_param_info "privkey" 1 "  privkey : " "${GREEN}$(conf_get_value $COIN_FOLDER$1/$COIN_CONFIG masternodeprivkey)${NC}"
 		js_dupes+=("{$(array_join , "${js_params[@]}")}")
 	}
 
