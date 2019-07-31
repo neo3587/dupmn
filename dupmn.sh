@@ -5,7 +5,6 @@
 
 # TODO:
 # - dupmn uninstall <prof_name> <number...> => $(echo {3..8}) || seq -s ' ' 3 8
-# - dupmn uninstall <prof_name> <number> optimization on O(n) wallet reallocation
 # - dupmn reinstall => allow main node ??
 # - dupmn install <prof_name> -c NUMBER | --count=NUMBER ?? => privkey array, print "MN + dupe_offset : privkey[i]"
 # - check and test memory reduction .conf parameters
@@ -61,7 +60,7 @@ function array_join() {
 	echo "$*"
 }
 function load_profile() {
-	# <$1 = profile_name> | [$2 = check_exec]
+	# <$1 = profile_name> | [$2 = check_data]
 
 	if [[ ! -f ".dupmn/$1" ]]; then
 		echo -e "${BLUE}$1${NC} profile hasn't been added"
@@ -199,8 +198,7 @@ function configure_systemd() {
 	fi
 }
 function wallet_cmd() {
-	# <$1 = start|stop> | <$2 = dup_number> # check $COIN_SERVICE exists before use start|stop & main MN is allowed
-	# <$1 = loaded> | [$2 = dup_number] | [$3 = wait_timeout]
+	# <$1 = start|stop|loaded> | [$2 = dup_number] | [$3 = wait_timeout]
 	exec 2> /dev/null
 
 	function wallet_loaded() {
@@ -403,9 +401,9 @@ function cmd_profdel() {
 function cmd_install() {
 	# <$1 = instance_number>
 
-	if [ ! -d "$COIN_FOLDER" ]; then
-		echo -e "$COIN_FOLDER folder can't be found, $COIN_NAME is not installed in the system or the given profile has a wrong parameter"
-		echo_json "{\"error\":\"Can't find coin folder: $COIN_FOLDER\",\"errcode\":500}" 
+	if [ ! -f "$COIN_FOLDER/$COIN_CONFIG" ]; then
+		echo -e "$COIN_FOLDER/$COIN_CONFIG folder can't be found, $COIN_NAME is not installed in the system or the given profile has a wrong parameter"
+		echo_json "{\"error\":\"Can't find coin config\",\"errcode\":500}" 
 		exit
 	elif [[ $FORCE_LISTEN == "1" && ! $IP ]]; then
 		echo -e "${RED}ERROR:${NC} A profile with ${MAGENTA}FORCE_LISTEN=1${NC} requires a IP with -ip=IP extra parameter when installing a dupe"
@@ -595,26 +593,25 @@ function cmd_uninstall() {
 		wallet_cmd stop $1 > /dev/null
 		rm -rf /usr/bin/$COIN_CLI-$DUP_COUNT
 		rm -rf /usr/bin/$COIN_DAEMON-$DUP_COUNT
-		$(conf_set_value .dupmn/dupmn.conf $PROFILE_NAME $(($DUP_COUNT-1)) 1)
+		rm -rf $COIN_FOLDER$1
 		$(make_chmod_file /usr/bin/$COIN_CLI-all    "#!/bin/bash\nfor (( i=0; i<=$(($DUP_COUNT-1)); i++ )) do\n echo -e MN\$i:\n $COIN_CLI-\$i \$@\ndone")
 		$(make_chmod_file /usr/bin/$COIN_DAEMON-all "#!/bin/bash\nfor (( i=0; i<=$(($DUP_COUNT-1)); i++ )) do\n echo -e MN\$i:\n $COIN_DAEMON-\$i \$@\ndone")
-		rm -rf $COIN_FOLDER$1
-
-		# TODO: async stop
+		$(conf_set_value .dupmn/dupmn.conf $PROFILE_NAME $(($DUP_COUNT-1)) 1)
 
 		for (( i=$1; i<=$DUP_COUNT; i++ )); do
-			wallet_cmd stop $i > /dev/null
+			wallet_cmd stop $i > /dev/null &
 		done
 
-		# TODO: await stop & move
+		wait
 
 		for (( i=$1+1; i<=$DUP_COUNT; i++ )); do
 			echo -e "setting ${CYAN}instance $i${NC} as ${CYAN}instance $(($i-1))${NC}..."
 			mv $COIN_FOLDER$i $COIN_FOLDER$(($i-1))
-			wallet_cmd start $(($i-1)) > /dev/null
+			wallet_cmd start $(($i-1)) > /dev/null &
 		done
 
-		# TODO: async start & wait
+		echo -e "starting all the renamed instances..."
+		wait 
 
 		systemctl disable $COIN_NAME-$DUP_COUNT.service &> /dev/null
 		rm -rf /etc/systemd/system/$COIN_NAME-$DUP_COUNT.service
