@@ -60,7 +60,7 @@ function array_join() {
 	echo "$*"
 }
 function load_profile() {
-	# <$1 = profile_name> | [$2 = check_data]
+	# <$1 = profile_name> | [$2 = check_exec]
 
 	if [[ ! -f ".dupmn/$1" ]]; then
 		echo -e "${BLUE}$1${NC} profile hasn't been added"
@@ -144,8 +144,8 @@ function find_port() {
 	}
 
 	local dup_ports="$(conf_get_value $COIN_FOLDER/$COIN_CONFIG port)"
-	[[ ! "$dup_ports" =~ ^[0-9]+$ ]] && dup_ports=$(conf_get_value $COIN_FOLDER/$COIN_CONFIG "masternodeaddr" | rev | cut -d : -f1 | rev)
-	[[ ! "$dup_ports" =~ ^[0-9]+$ ]] && dup_ports=$(conf_get_value $COIN_FOLDER/$COIN_CONFIG "externalip"     | rev | cut -d : -f1 | rev)
+	[[ ! $(is_number $dup_ports) ]] && dup_ports=$(conf_get_value $COIN_FOLDER/$COIN_CONFIG "masternodeaddr" | rev | cut -d : -f1 | rev)
+	[[ ! $(is_number $dup_ports) ]] && dup_ports=$(conf_get_value $COIN_FOLDER/$COIN_CONFIG "externalip"     | rev | cut -d : -f1 | rev)
 	for (( i=1; i<=$DUP_COUNT; i++ )); do
 		dup_ports="$dup_ports $(conf_get_value $COIN_FOLDER$i/$COIN_CONFIG rpcport) "
 	done
@@ -198,7 +198,7 @@ function configure_systemd() {
 	fi
 }
 function wallet_cmd() {
-	# <$1 = start|stop|loaded> | [$2 = dup_number] | [$3 = wait_timeout]
+	# <$1 = start|stop|loaded> | [$2 = dup_number] | [$3 = wait_timeout(loaded)]
 	exec 2> /dev/null
 
 	function wallet_loaded() {
@@ -466,16 +466,17 @@ function cmd_install() {
 		sleep 3
 	fi
 
-	# install_proc IP
+	# install_proc ip
 
 	local mn_port=$(conf_get_value $new_folder/$COIN_CONFIG "port")
-	[[ ! "$mn_port" =~ ^[0-9]+$ ]] && mn_port=$(conf_get_value $new_folder/$COIN_CONFIG "masternodeaddr" | rev | cut -d : -f1 | rev)
-	[[ ! "$mn_port" =~ ^[0-9]+$ ]] && mn_port=$(conf_get_value $new_folder/$COIN_CONFIG "externalip"     | rev | cut -d : -f1 | rev)
+	[[ ! $(is_number $mn_port) ]] && mn_port=$(conf_get_value $new_folder/$COIN_CONFIG "masternodeaddr" | rev | cut -d : -f1 | rev)
+	[[ ! $(is_number $mn_port) ]] && mn_port=$(conf_get_value $new_folder/$COIN_CONFIG "externalip"     | rev | cut -d : -f1 | rev)
+	[[ ! $(is_number $mn_port) ]] && mn_port=""
 
 	if [[ $IP ]]; then 
 
-		$(conf_set_value $new_folder/$COIN_CONFIG "externalip"     $IP:$mn_port 0)
-		$(conf_set_value $new_folder/$COIN_CONFIG "masternodeaddr" $IP:$mn_port 0)
+		$(conf_set_value $new_folder/$COIN_CONFIG "externalip"     "$IP$([[ $mn_port ]] && echo :$mn_port)" 0)
+		$(conf_set_value $new_folder/$COIN_CONFIG "masternodeaddr" "$IP$([[ $mn_port ]] && echo :$mn_port)" 0)
 
 		if [[ $FORCE_LISTEN == "1" ]]; then
 
@@ -496,6 +497,8 @@ function cmd_install() {
 			fi
 		fi
 	fi
+
+	# install_proc end
 
 	if [[ $INSTALL_BOOTSTRAP ]]; then
 		if [[ ! $(wallet_cmd loaded) || ($COIN_SERVICE && -f /etc/systemd/system/$COIN_SERVICE) ]]; then
@@ -520,7 +523,7 @@ function cmd_install() {
 
 	echo -e "===================================================================================================\
 			\n${BLUE}$COIN_NAME${NC} duplicated masternode ${CYAN}number $1${NC} should be now up and trying to sync with the blockchain.\
-			\nThe duplicated masternode uses the $([[ $show_ip ]] && echo "IP:PORT ${YELLOW}$show_ip:$mn_port${NC}" || echo "same IP and PORT than the original one").\
+			\nThe duplicated masternode uses the $([[ $show_ip ]] && echo "IP:PORT ${YELLOW}$show_ip:$([[ $mn_port ]] && echo $mn_port || echo ????)${NC}" || echo "same IP and PORT than the original one").\
 			\nRPC port is ${MAGENTA}$NEW_RPC${NC}, this one is used to send commands to the wallet, DON'T put it in 'masternode.conf' (other programs might want to use this port which causes a conflict, but you can change it with ${MAGENTA}dupmn rpcchange $PROFILE_NAME $1 PORT_NUMBER${NC}).\
 			\nStart:              ${RED}systemctl start   $COIN_NAME-$1.service${NC}\
 			\nStop:               ${RED}systemctl stop    $COIN_NAME-$1.service${NC}\
@@ -547,7 +550,7 @@ function cmd_install() {
 		fi
 	fi
 
-	echo_json "{\"message\":\"dupe successfully installed\",\"ip\":\"$([[ $show_ip ]] && echo $show_ip || echo undefined)\",\"port\":\"$mn_port\",\"rpc\":\"$NEW_RPC\",\"privkey\":\"$NEW_KEY\",\"dup\":$1,\"retcode\":$retcode}"
+	echo_json "{\"message\":\"dupe successfully installed\",\"ip\":\"$([[ $show_ip ]] && echo $show_ip || echo null)\",\"port\":\"$([[ $mn_port ]] && echo $mn_port || echo null)\",\"rpc\":\"$NEW_RPC\",\"privkey\":\"$NEW_KEY\",\"dup\":$1,\"retcode\":$retcode}"
 }
 function cmd_reinstall() {
 	# <$1 = instance_number>
