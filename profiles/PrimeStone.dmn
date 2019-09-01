@@ -1,8 +1,8 @@
-COIN_NAME="MCPCoin"
-COIN_PATH="/usr/local/bin/"
-COIN_DAEMON="MCPCoind"
-COIN_CLI="MCPCoin-cli"
-COIN_FOLDER="/root/.MCPCoin"
-COIN_CONFIG="MCPCoin.conf"
-RPC_PORT=49100
-COIN_SERVICE="MCPCoin.service"
+COIN_NAME="PrimeStone"
+COIN_PATH="/usr/bin/"
+COIN_DAEMON="primestoned"
+COIN_CLI="primestone-cli"
+COIN_FOLDER="/root/.primestone"
+COIN_CONFIG="primestone.conf"
+RPC_PORT=34126
+COIN_SERVICE="primestone.service"
