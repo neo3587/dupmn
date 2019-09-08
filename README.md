@@ -17,7 +17,7 @@ A script to easily create and manage multiple masternodes of the same coin in th
 
 On your VPS type:
 ```
-curl -sL https://raw.githubusercontent.com/neo3587/dupmn/master/dupmn_install.sh | sudo -E bash -
+curl -sL https://raw.githubusercontent.com/Primestonecoin/dupmn/master/dupmn.sh | sudo -E bash -
 ```
 And that's all, the script is already installed.
 Check the [Usage example](#usage-example) to see the guide of the steps to follow.
