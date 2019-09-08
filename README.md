@@ -65,50 +65,50 @@ Usage example based on the CARDbuyers profile:
 
 First install the dupmn script (only needs to be done once):
 ``` 
-curl -sL https://raw.githubusercontent.com/neo3587/dupmn/master/dupmn_install.sh | sudo -E bash -
+curl -sL https://raw.githubusercontent.com/Primestonecoin/dupmn/master/dupmn.sh | sudo -E bash -
 ``` 
-Then add the coin profile (if the profile doesn't exists in the [profiles folder](https://github.com/neo3587/dupmn/tree/master/profiles), then check [Profile creation](#profile-creation)):
+Then add the coin profile (if the profile doesn't exists in the [profiles folder](https://github.com/Primestonecoin/dupmn/tree/master/profiles), then check [Profile creation](#profile-creation)):
 ```
-wget -q https://raw.githubusercontent.com/neo3587/dupmn/master/profiles/CARDbuyers.dmn
-dupmn profadd CARDbuyers.dmn CARDbuyers
+wget -q https://raw.githubusercontent.com/Primestonecoin/dupmn/master/profiles/PrimeStone.dmn
+dupmn profadd PrimeStone.dmn PrimeStone
 ```
 Now the CARDbuyers profile is saved and the downloaded file can be removed if you want: `rm -rf CARDbuyers.dmn` (you won't need to run the `profadd` command anymore for this coin).
 
 Let's create 3 extra instances (Note that you MUST already have installed the CARDbuyers node in the VPS, the script cannot obtain the binaries from nowhere):
 ```
-dupmn install CARDbuyers 
-dupmn install CARDbuyers 
-dupmn install CARDbuyers 
+dupmn install PrimeStone 
+dupmn install PrimeStone 
+dupmn install PrimeStone 
 ```
-Every instance has it own private key, it will be shown after installing the new instance, also can be seen with `dupmn list CARDbuyers`.
+Every instance has it own private key, it will be shown after installing the new instance, also can be seen with `dupmn list PrimeStone`.
 
 Now you can manage every instance like this:
 ```
-CARDbuyers-cli-1 masternode status
-CARDbuyers-cli-2 getblockcount
-CARDbuyers-cli-3 getinfo
-CARDbuyers-cli-all masternode status
+primestone-cli-1 masternode status
+primestone-cli-2 getblockcount
+primestone-cli-3 getinfo
+primestone-cli-all masternode status
 ```
-There's also a `CARDbuyers-cli-0`, but is just a reference to the 'main node', not a created one with dupmn.
+There's also a `primestone-cli-0`, but is just a reference to the 'main node', not a created one with dupmn.
 
 When you get tired of one masternode, per example the 3rd instance, then just uninstall it with:
 ```
-dupmn uninstall CARDbuyers 3
+dupmn uninstall PrimeStone 3
 ```
 Or you can even uninstall them all (except the 'main node') with:
 ```
-dupmn uninstall CARDbuyers all
+dupmn uninstall PrimeStone all
 ```
 The new masternode instances will use the same IP and port, so the `masternode.conf` will look like this:
 ```
-MN01 123.45.67.89:48451 713RMbHoMgTKewAmsUwqqJAFH9BwhgKixe96tYbZdtLmysFS6vz a4d79e50933ce430a3b2874738a156f3ecb866e598d7c9ecf3382902e2d29afd 0
-MN02 123.45.67.89:48451 72aQd3U3qRFsc2KviX5iWF3BrK3CxHLi23BrToikFPCCpRr5kt9 26072b1000545db553c425c776cea9d29ef341512dd88b7522419db7dd952ebc 0
-MN03 123.45.67.89:48451 71SuLvXHebyT4NtX96ygSJVMhwns9GaBuc2yfdJQjjCokDx5Cem 349acfcf2ea88ab0f9f165ebfd4b98273e260b813b757242e1f371d7075d3f94 1
-MN04 123.45.67.89:48451 719FiV3S7m874FH1A5hmRYGFUwEzd8esES8k6TJoevgJBHnmQV9 6dbff523ae79c29c48bcd77231f15c0b8354daa2ea32cb46ed0dd0fe31ec7e82 0
+MN01 123.45.67.89:34124 713RMbHoMgTKewAmsUwqqJAFH9BwhgKixe96tYbZdtLmysFS6vz a4d79e50933ce430a3b2874738a156f3ecb866e598d7c9ecf3382902e2d29afd 0
+MN02 123.45.67.89:34124 72aQd3U3qRFsc2KviX5iWF3BrK3CxHLi23BrToikFPCCpRr5kt9 26072b1000545db553c425c776cea9d29ef341512dd88b7522419db7dd952ebc 0
+MN03 123.45.67.89:34124 71SuLvXHebyT4NtX96ygSJVMhwns9GaBuc2yfdJQjjCokDx5Cem 349acfcf2ea88ab0f9f165ebfd4b98273e260b813b757242e1f371d7075d3f94 1
+MN04 123.45.67.89:34124 719FiV3S7m874FH1A5hmRYGFUwEzd8esES8k6TJoevgJBHnmQV9 6dbff523ae79c29c48bcd77231f15c0b8354daa2ea32cb46ed0dd0fe31ec7e82 0
 ```
-Using `dupmn install CARDbuyers` will show you the masternode private key for that instance, the transaction must be obviosuly different for each masternode, you can't use the same transaction to run 2 masternodes, even if they're in the same VPS.
+Using `dupmn install PrimeStone` will show you the masternode private key for that instance, the transaction must be obviosuly different for each masternode, you can't use the same transaction to run 2 masternodes, even if they're in the same VPS.
 
-*Note: `dupmn install CARDbuyers` will show you also a different rpc port, this is NOT the port that you have to add in the `masternode.conf` file, every masternode will use the same port (48451 in case of CARDbuyers).*  
+*Note: `dupmn install PrimeStone` will show you also a different rpc port, this is NOT the port that you have to add in the `masternode.conf` file, every masternode will use the same port (34124 in case of PrimeStone).*  
 *Note 2: You can see some image examples at <a href="https://github.com/neo3587/dupmn/wiki/Image-Examples">Image Examples</a>.*
 
 # <a name ="profile-creation"></a> Profile creation
