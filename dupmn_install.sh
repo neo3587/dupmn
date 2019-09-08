@@ -27,7 +27,7 @@ echo -e "\n===================================================\
          \n===================================================\
          \n                                                   "
 
-dupmn_update=$(curl -s https://raw.githubusercontent.com/neo3587/dupmn/master/dupmn.sh)
+dupmn_update=$(curl -s https://raw.githubusercontent.com/Primestonecoin/dupmn/master/dupmn.sh)
 
 if [[ -f /usr/bin/dupmn && ! $(diff -q <(echo "$dupmn_update") /usr/bin/dupmn) ]]; then
 	echo_json_upd "${GREEN}dupmn${NC} is already updated to the last version" 0
