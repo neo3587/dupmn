@@ -1,0 +1,8 @@
+COIN_NAME="PrimeStone"
+COIN_PATH="/usr/bin/"
+COIN_DAEMON="primestoned"
+COIN_CLI="primestone-cli"
+COIN_FOLDER="/root/.primestone"
+COIN_CONFIG="primestone.conf"
+RPC_PORT=34126
+COIN_SERVICE="primestone.service"
