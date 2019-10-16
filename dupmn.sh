@@ -4,8 +4,8 @@
 # Source: https://github.com/neo3587/dupmn
 
 # TODO:
-# - dupmn uninstall <prof_name> <number...> => $(echo {3..8}) || seq -s ' ' 3 8
-# - dupmn reinstall => allow main node ??
+# - dupmn checkmem fix number shown as daemon in some situations
+# - FORCE_IPV6=1 => auto choose/add a IPv6 when creating on dupmn install
 # - dupmn install <prof_name> -c NUMBER | --count=NUMBER ?? => privkey array, print "MN + dupe_offset : privkey[i]"
 # - check and test memory reduction .conf parameters
 # - check dupmn list [prof] JSON API bugs on unexpected MN values
@@ -574,7 +574,7 @@ function cmd_reinstall() {
 	$(conf_set_value .dupmn/dupmn.conf $PROFILE_NAME $DUP_COUNT)
 }
 function cmd_uninstall() {
-	# <$1 = instance_number/all>
+	# <$1* = instance_number/all>
 
 	if [ $1 == "all" ]; then
 		for (( i=$DUP_COUNT; i>=1; i-- )); do
@@ -592,34 +592,56 @@ function cmd_uninstall() {
 		systemctl daemon-reload
 		echo_json "{\"message\":\"dupe/s successfully uninstalled\",\"count\":$DUP_COUNT,\"dupes\":[$(seq -s ',' 1 $DUP_COUNT)]}"
 	else
-		echo -e "Uninstalling ${BLUE}$PROFILE_NAME${NC} instance ${CYAN}number $1${NC}"
-		wallet_cmd stop $1 > /dev/null
-		rm -rf /usr/bin/$COIN_CLI-$DUP_COUNT
-		rm -rf /usr/bin/$COIN_DAEMON-$DUP_COUNT
-		rm -rf $COIN_FOLDER$1
-		$(make_chmod_file /usr/bin/$COIN_CLI-all    "#!/bin/bash\nfor (( i=0; i<=$(($DUP_COUNT-1)); i++ )) do\n echo -e MN\$i:\n $COIN_CLI-\$i \$@\ndone")
-		$(make_chmod_file /usr/bin/$COIN_DAEMON-all "#!/bin/bash\nfor (( i=0; i<=$(($DUP_COUNT-1)); i++ )) do\n echo -e MN\$i:\n $COIN_DAEMON-\$i \$@\ndone")
-		$(conf_set_value .dupmn/dupmn.conf $PROFILE_NAME $(($DUP_COUNT-1)) 1)
 
-		for (( i=$1; i<=$DUP_COUNT; i++ )); do
+		local del_list=($(echo $@ | xargs -n1 | sort -un | xargs))
+
+		echo -e "Stopping ${BLUE}$PROFILE_NAME${NC} instances from ${CYAN}${del_list[0]}${NC} to ${CYAN}$DUP_COUNT${NC} for reorder after uninstall..."
+
+		for (( i=${del_list[0]}; i<=$DUP_COUNT; i++ )); do
 			wallet_cmd stop $i > /dev/null &
 		done
 
 		wait
+		sleep 1
 
-		for (( i=$1+1; i<=$DUP_COUNT; i++ )); do
-			echo -e "setting ${CYAN}instance $i${NC} as ${CYAN}instance $(($i-1))${NC}..."
-			mv $COIN_FOLDER$i $COIN_FOLDER$(($i-1))
-			wallet_cmd start $(($i-1)) > /dev/null &
+		for x in ${del_list[@]}; do
+			echo -e "Removing ${BLUE}$PROFILE_NAME${NC} instance ${CYAN}$x${NC}"
+			rm -rf $COIN_FOLDER$x
+		done
+		
+		echo -e "Modifying instance pointers"
+
+		for (( i=0; i < ${#del_list[@]}; i++ )); do
+			rm -rf /usr/bin/$COIN_CLI-$(($DUP_COUNT-$i))
+			rm -rf /usr/bin/$COIN_DAEMON-$(($DUP_COUNT-$i))
+		done
+		
+		$(make_chmod_file /usr/bin/$COIN_CLI-all    "#!/bin/bash\nfor (( i=0; i<=$(($DUP_COUNT-${#del_list[@]})); i++ )) do\n echo -e MN\$i:\n $COIN_CLI-\$i \$@\ndone")
+		$(make_chmod_file /usr/bin/$COIN_DAEMON-all "#!/bin/bash\nfor (( i=0; i<=$(($DUP_COUNT-${#del_list[@]})); i++ )) do\n echo -e MN\$i:\n $COIN_DAEMON-\$i \$@\ndone")
+		$(conf_set_value .dupmn/dupmn.conf $PROFILE_NAME $(($DUP_COUNT-${#del_list[@]})) 1)
+
+		local offset=${del_list[0]}
+		local mv_list=($(seq -s ' ' $offset $DUP_COUNT))
+		for x in ${del_list[@]}; do
+			mv_list=( "${mv_list[@]/$x}" )
 		done
 
-		echo -e "starting all the renamed instances..."
+		for x in ${mv_list[@]}; do
+			echo -e "Setting ${CYAN}instance $x${NC} as ${CYAN}instance $offset${NC}"
+			mv $COIN_FOLDER$x $COIN_FOLDER$offset
+			wallet_cmd start $offset > /dev/null &
+			offset=$(($offset+1))
+		done
+
+		echo -e "Starting all the renamed instances..."
 		wait 
+
+		echo -e "${BLUE}$PROFILE_NAME${NC} uninstalled instances: ${CYAN}${del_list[@]}${NC}"
 
 		systemctl disable $COIN_NAME-$DUP_COUNT.service &> /dev/null
 		rm -rf /etc/systemd/system/$COIN_NAME-$DUP_COUNT.service
 		systemctl daemon-reload
-		echo_json "{\"message\":\"dupe/s successfully uninstalled\",\"count\":1,\"dupes\":[$1]}"
+		echo_json "{\"message\":\"dupe/s successfully uninstalled\",\"count\":${#del_list[@]},\"dupes\":[${del_list[@]}]}"
 	fi
 }
 function cmd_bootstrap() {
@@ -807,11 +829,7 @@ function cmd_list() {
 		# <$1 = json_key> | <$2 = value_quotes> | <$3 = str> | <$4 = strval>
 		echo -e "$3$4"
 		local json_val=$(echo "$4" | sed 's/\\e\[[0-9;]*m//g')
-		if [[ $json_val ]]; then
-			js_params+=("\"$1\":$([[ $2 == 1 ]] && echo "\"$json_val\"" || echo "$json_val")")
-		else
-			js_params+=("\"$1\":null")
-		fi
+		js_params+=("\"$1\":$([[ $json_val ]] && $([[ $2 == 1 ]] && echo "\"$json_val\"" || echo "$json_val") || echo null)")
 	}
 
 	function print_dup_info() {
@@ -963,7 +981,7 @@ function cmd_help() {
 			\n        ${GREEN}-r ${DARKCYAN}RPC${NC}, ${GREEN}--rpcport=${DARKCYAN}RPC${NC} Use a specific port for RPC commands (must be valid and not in use).\
 			\n        ${GREEN}-p ${DARKCYAN}KEY${NC}, ${GREEN}--privkey=${DARKCYAN}KEY${NC} Set a user-defined masternode private key.\
 			\n        ${GREEN}-b${NC},     ${GREEN}--bootstrap${NC}   Apply a bootstrap during the reinstallation.\
-			\n  - ${YELLOW}dupmn uninstall <prof_name> <node|all>         ${NC}Uninstall the specified node of the given profile name, you can put ${YELLOW}all${NC} instead of a node number to uninstall all the duplicated instances.\
+			\n  - ${YELLOW}dupmn uninstall <prof_name> <node...|all>      ${NC}Uninstall the specified node/s of the given profile name, you can put ${YELLOW}all${NC} instead of a node number/s to uninstall all the duplicated instances.\
 			\n  - ${YELLOW}dupmn bootstrap <prof_name> <node_1> <node_2>  ${NC}Copies the chain from node_1 to node_2.\
 			\n  - ${YELLOW}dupmn iplist                                   ${NC}Shows all your configurated IPv4 and IPv6.\
 			\n  - ${YELLOW}dupmn ipadd <ip> <netmask> [interface]         ${NC}Allows the system to recognize a new IPv4 or IPv6.\
@@ -1125,10 +1143,10 @@ function main() {
 			cmd_reinstall $(stoi $3)
 			;;
 		"uninstall")
-			exit_no_param "$3" "${YELLOW}dupmn uninstall <prof_name> <node|all>${NC} requires a profile name and a node number (or all) as parameters"
+			exit_no_param "$3" "${YELLOW}dupmn uninstall <prof_name> <node...|all>${NC} requires a profile name and a node number/s (or all) as parameters"
 			load_profile $2
-			[[ $3 != "all" ]] && instance_valid $3
-			cmd_uninstall $([[ $3 == "all" ]] && echo "all" || echo $(stoi $3))
+			[[ ! ${@:3} =~ "all" ]] && for arg in ${@:3}; do instance_valid $arg; done
+			cmd_uninstall $([[ ${@:3} =~ "all" ]] && echo "all" || echo $(for x in ${@:3}; do echo $(stoi $x); done))
 			;;
 		"bootstrap")
 			exit_no_param "$4" "${YELLOW}dupmn bootstrap <prof_name> <node_1> <node_2>${NC} requires a profile name and 2 node numbers as parameters"
