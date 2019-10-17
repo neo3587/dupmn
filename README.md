@@ -36,7 +36,7 @@ Check the [Usage example](#usage-example) to see the guide of the steps to follo
 `-r RPC`, `--rpcport=RPC` : Use a specific port for RPC commands (must be valid and not in use).  
 `-p KEY`, `--privkey=KEY` : Set a user-defined masternode private key.   
 `-b`, `--bootstrap` : Apply a bootstrap during the reinstallation.  
-- [`dupmn uninstall <profile_name> <node|all>`](https://github.com/neo3587/dupmn/wiki/Commands#uninstall) : Uninstall the specified node number of the given profile name, you can put `all` instead of a node number to uninstall all the dupes.
+- [`dupmn uninstall <profile_name> <node...|all>`](https://github.com/neo3587/dupmn/wiki/Commands#uninstall) : Uninstall one or many nodes dupes of the given profile name, you can put `all` instead of a node number to uninstall all the dupes.
 - [`dupmn bootstrap <profile_name> <node_1> <node_2>`](https://github.com/neo3587/dupmn/wiki/Commands#bootstrap) : Copies the stored chain from the node_1 to the node_2.
 - [`dupmn iplist`](https://github.com/neo3587/dupmn/wiki/Commands#iplist) : Shows your current IPv4 and IPv6 addresses.
 - [`dupmn ipadd <ip> <netmask> [interface]`](https://github.com/neo3587/dupmn/wiki/Commands#ipadd) : Adds an IPv4 or IPv6 address.
@@ -61,7 +61,7 @@ Check the [Usage example](#usage-example) to see the guide of the steps to follo
 
 # <a name ="usage-example"></a> Usage example
 
-Usage example based on the CARDbuyers profile:
+Usage example based on the MCPCoin profile:
 
 First install the dupmn script (only needs to be done once):
 ``` 
@@ -69,46 +69,46 @@ curl -sL https://raw.githubusercontent.com/neo3587/dupmn/master/dupmn_install.sh
 ``` 
 Then add the coin profile (if the profile doesn't exists in the [profiles folder](https://github.com/neo3587/dupmn/tree/master/profiles), then check [Profile creation](#profile-creation)):
 ```
-wget -q https://raw.githubusercontent.com/neo3587/dupmn/master/profiles/CARDbuyers.dmn
-dupmn profadd CARDbuyers.dmn CARDbuyers
+wget -q https://raw.githubusercontent.com/neo3587/dupmn/master/profiles/MCPCoin.dmn
+dupmn profadd MCPCoin.dmn MCPCoin
 ```
-Now the CARDbuyers profile is saved and the downloaded file can be removed if you want: `rm -rf CARDbuyers.dmn` (you won't need to run the `profadd` command anymore for this coin).
+Now the MCPCoin profile is saved and the downloaded file can be removed if you want: `rm -rf MCPCoin.dmn` (you won't need to run the `profadd` command anymore for this coin).
 
-Let's create 3 extra instances (Note that you MUST already have installed the CARDbuyers node in the VPS, the script cannot obtain the binaries from nowhere):
+Let's create 3 extra instances (Note that you MUST already have installed the MCPCoin node in the VPS, the script cannot obtain the binaries from nowhere):
 ```
-dupmn install CARDbuyers 
-dupmn install CARDbuyers 
-dupmn install CARDbuyers 
+dupmn install MCPCoin 
+dupmn install MCPCoin
+dupmn install MCPCoin
 ```
-Every instance has it own private key, it will be shown after installing the new instance, also can be seen with `dupmn list CARDbuyers`.
+Every instance has it own private key, it will be shown after installing the new instance, also can be seen with `dupmn list MCPCoin`.
 
 Now you can manage every instance like this:
 ```
-CARDbuyers-cli-1 masternode status
-CARDbuyers-cli-2 getblockcount
-CARDbuyers-cli-3 getinfo
-CARDbuyers-cli-all masternode status
+MCPCoin-cli-1 masternode status
+MCPCoin-cli-2 getblockcount
+MCPCoin-cli-3 getinfo
+MCPCoin-cli-all masternode status
 ```
-There's also a `CARDbuyers-cli-0`, but is just a reference to the 'main node', not a created one with dupmn.
+There's also a `MCPCoin-cli-0`, but is just a reference to the 'main node', not a created one with dupmn.
 
 When you get tired of one masternode, per example the 3rd instance, then just uninstall it with:
 ```
-dupmn uninstall CARDbuyers 3
+dupmn uninstall MCPCoin 3
 ```
 Or you can even uninstall them all (except the 'main node') with:
 ```
-dupmn uninstall CARDbuyers all
+dupmn uninstall MCPCoin all
 ```
 The new masternode instances will use the same IP and port, so the `masternode.conf` will look like this:
 ```
-MN01 123.45.67.89:48451 713RMbHoMgTKewAmsUwqqJAFH9BwhgKixe96tYbZdtLmysFS6vz a4d79e50933ce430a3b2874738a156f3ecb866e598d7c9ecf3382902e2d29afd 0
-MN02 123.45.67.89:48451 72aQd3U3qRFsc2KviX5iWF3BrK3CxHLi23BrToikFPCCpRr5kt9 26072b1000545db553c425c776cea9d29ef341512dd88b7522419db7dd952ebc 0
-MN03 123.45.67.89:48451 71SuLvXHebyT4NtX96ygSJVMhwns9GaBuc2yfdJQjjCokDx5Cem 349acfcf2ea88ab0f9f165ebfd4b98273e260b813b757242e1f371d7075d3f94 1
-MN04 123.45.67.89:48451 719FiV3S7m874FH1A5hmRYGFUwEzd8esES8k6TJoevgJBHnmQV9 6dbff523ae79c29c48bcd77231f15c0b8354daa2ea32cb46ed0dd0fe31ec7e82 0
+MN01 123.45.67.89:49451 4xbupX4SFDqettRaKSkLB5hoCVJbTBmK5UfDcja5o5y2C3E3mWZ a4d79e50933ce430a3b2874738a156f3ecb866e598d7c9ecf3382902e2d29afd 0
+MN02 123.45.67.89:49451 4y9xiAx7npcE88gCjqbQfYJHkvgY4V2of9T87gd2qyACohH8SpQ 26072b1000545db553c425c776cea9d29ef341512dd88b7522419db7dd952ebc 0
+MN03 123.45.67.89:49451 4xP6ZwspdJ6qRwzZUZW4VSLXxR3z15zYnwA6wc1CUWk9pCdjrA2 349acfcf2ea88ab0f9f165ebfd4b98273e260b813b757242e1f371d7075d3f94 1
+MN04 123.45.67.89:49451 4yUJe3fzQ8t11ukVULUrKfHUswujAwRWi33tTXp41rsEc9PENM8 6dbff523ae79c29c48bcd77231f15c0b8354daa2ea32cb46ed0dd0fe31ec7e82 0
 ```
-Using `dupmn install CARDbuyers` will show you the masternode private key for that instance, the transaction must be obviosuly different for each masternode, you can't use the same transaction to run 2 masternodes, even if they're in the same VPS.
+Using `dupmn install MCPCoin` will show you the masternode private key for that instance, the transaction must be obviosuly different for each masternode, you can't use the same transaction to run 2 masternodes, even if they're in the same VPS.
 
-*Note: `dupmn install CARDbuyers` will show you also a different rpc port, this is NOT the port that you have to add in the `masternode.conf` file, every masternode will use the same port (48451 in case of CARDbuyers).*  
+*Note: `dupmn install MCPCoin` will show you also a different rpc port, this is NOT the port that you have to add in the `masternode.conf` file, every masternode will use the same port (49451 in case of MCPCoin).*  
 *Note 2: You can see some image examples at <a href="https://github.com/neo3587/dupmn/wiki/Image-Examples">Image Examples</a>.*
 
 # <a name ="profile-creation"></a> Profile creation
