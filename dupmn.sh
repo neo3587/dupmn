@@ -829,7 +829,7 @@ function cmd_list() {
 		# <$1 = json_key> | <$2 = value_quotes> | <$3 = str> | <$4 = strval>
 		echo -e "$3$4"
 		local json_val=$(echo "$4" | sed 's/\\e\[[0-9;]*m//g')
-		js_params+=("\"$1\":$([[ $json_val ]] && $([[ $2 == 1 ]] && echo "\"$json_val\"" || echo "$json_val") || echo null)")
+		js_params+=("\"$1\":$([[ $json_val ]] && echo $([[ $2 == 1 ]] && echo "\"$json_val\"" || echo "$json_val") || echo null)")
 	}
 
 	function print_dup_info() {
