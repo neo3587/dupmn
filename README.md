@@ -109,7 +109,6 @@ MN04 123.45.67.89:49451 4yUJe3fzQ8t11ukVULUrKfHUswujAwRWi33tTXp41rsEc9PENM8 6dbf
 Using `dupmn install MCPCoin` will show you the masternode private key for that instance, the transaction must be obviosuly different for each masternode, you can't use the same transaction to run 2 masternodes, even if they're in the same VPS.
 
 *Note: `dupmn install MCPCoin` will show you also a different rpc port, this is NOT the port that you have to add in the `masternode.conf` file, every masternode will use the same port (49451 in case of MCPCoin).*  
-*Note 2: You can see some image examples at <a href="https://github.com/neo3587/dupmn/wiki/Image-Examples">Image Examples</a>.*
 
 # <a name ="profile-creation"></a> Profile creation
 
