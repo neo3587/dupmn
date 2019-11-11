@@ -4,7 +4,6 @@
 # Source: https://github.com/neo3587/dupmn
 
 # TODO:
-# - dupmn checkmem fix number shown as daemon in some situations
 # - FORCE_IPV6=1 => auto choose/add a IPv6 when creating on dupmn install
 # - dupmn install <prof_name> -c NUMBER | --count=NUMBER ?? => privkey array, print "MN + dupe_offset : privkey[i]"
 # - check and test memory reduction .conf parameters
@@ -948,7 +947,7 @@ function cmd_swapfile() {
 	echo -e "Use ${YELLOW}swapon -s${NC} to see the changes of your swapfile and ${YELLOW}free -m${NC} to see the total available memory"
 }
 function cmd_checkmem() {
-	local checks=$(ps -o %mem,command ax | awk '$1 >= 0.1 && $2 ~ /.d$/ && $3 == "-daemon" { print $1 " " $2 }' | awk -F"/" '{ print $NF " " $1 }')
+	local checks=$(ps -o %mem,command ax | awk '$1 >= 0.1 && $2 ~ /.d$/ && $3 == "-daemon" { print $2 " " $1 }' | sed 's@.*/@@')
 	local daemons=$(echo "$checks" | awk '{ print $1 }' | sort -u)
 	output=()
 
