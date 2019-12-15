@@ -4,10 +4,11 @@
 # Source: https://github.com/neo3587/dupmn
 
 # TODO:
-# - FORCE_IPV6=1 => auto choose/add a IPv6 when creating on dupmn install
+# - AUTO_IPV6=1 => auto choose/add a IPv6 when creating on dupmn install
 # - dupmn install <prof_name> -c NUMBER | --count=NUMBER ?? => privkey array, print "MN + dupe_offset : privkey[i]"
 # - check and test memory reduction .conf parameters
 # - check dupmn list [prof] JSON API bugs on unexpected MN values
+# - pid003 support
 
 
 readonly GRAY='\e[1;30m'
@@ -44,6 +45,7 @@ NEW_RPC=""
 NEW_KEY=""
 INSTALL_BOOTSTRAP=""
 FORCE_LISTEN=""
+AUTO_IPV6=""
 
 
 function echo_json() {
@@ -408,6 +410,24 @@ function cmd_install() {
 		echo -e "${RED}ERROR:${NC} A profile with ${MAGENTA}FORCE_LISTEN=1${NC} requires a IP with -ip=IP extra parameter when installing a dupe"
 		echo_json "{\"error\":\"A profile with FORCE_LISTEN=1 requires a IP when installing a dupe\",\"errcode\":501}" 
 		exit
+	elif [[ $AUTO_IPV6 == "1" && ! $IP ]]; then
+		# check main & dupes ipv6
+		ips=$(get_ips 6)
+		for (( i=0; i<=$DUP_COUNT; i++ )); do
+			check_ip=$(conf_get_value $(get_folder $i)/$COIN_CONFIG "masternodeaddr" | cut -d : -f1)
+			[[ ! $check_ip ]] && check_ip=$(conf_get_value $(get_folder $i)/$COIN_CONFIG "externalip" | cut -d : -f1)
+			if [[ $ips =~ $check_ip ]]; then
+				ips=$(echo "$ips" | grep -v $check_ip)
+			fi
+		done
+		
+		if [[ ! ${#ips[@]} ]]; then
+			echo -e "Couldn't find a free IPv6, to autoadd"
+			# TODO: auto create IPv6 & apply
+			return
+		else
+			IP=${ips[0]}
+		fi
 	fi
 
 	local new_folder="$COIN_FOLDER$1"
@@ -561,8 +581,8 @@ function cmd_reinstall() {
 	fi
 
 	wallet_cmd stop $1 > /dev/null
-	[[ ! $NEW_KEY ]] && NEW_KEY=$(conf_get_value $COIN_FOLDER$2/$COIN_CONFIG "masternodeprivkey")
-	rm -rf $COIN_FOLDER$2
+	[[ ! $NEW_KEY ]] && NEW_KEY=$(conf_get_value $COIN_FOLDER$1/$COIN_CONFIG "masternodeprivkey")
+	rm -rf $COIN_FOLDER$1
 
 	cmd_install $1
 	DUP_COUNT=$(($DUP_COUNT-1))
