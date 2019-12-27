@@ -584,8 +584,9 @@ function cmd_reinstall() {
 	[[ ! $NEW_KEY ]] && NEW_KEY=$(conf_get_value $COIN_FOLDER$1/$COIN_CONFIG "masternodeprivkey")
 	rm -rf $COIN_FOLDER$1
 
+	tmp_dupcount=$DUP_COUNT
 	cmd_install $1
-	DUP_COUNT=$(($DUP_COUNT-1))
+	DUP_COUNT=$tmp_dupcount
 
 	$(make_chmod_file /usr/bin/$COIN_CLI-all    "#!/bin/bash\nfor (( i=0; i<=$DUP_COUNT; i++ )) do\n echo -e MN\$i:\n $COIN_CLI-\$i \$@\ndone")
 	$(make_chmod_file /usr/bin/$COIN_DAEMON-all "#!/bin/bash\nfor (( i=0; i<=$DUP_COUNT; i++ )) do\n echo -e MN\$i:\n $COIN_DAEMON-\$i \$@\ndone")
