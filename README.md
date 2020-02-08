@@ -56,7 +56,7 @@ Check the [Usage example](#usage-example) to see the guide of the steps to follo
 - [`dupmn help`](https://github.com/neo3587/dupmn/wiki/Commands#help) : Just shows the available commands in the console.
 - [`dupmn update`](https://github.com/neo3587/dupmn/wiki/Commands#update) : Checks the last version of the script and updates it if necessary.
 
-*Note: `<parameter>` means required, `[parameter]` means optional, all `node` are always a number that refers to a dupe (0 is the main node and is allowed in some commands)*  
+*Note: `<parameter>` means required, `[parameter]` means optional, `parameter...` means 1 or more parameters, `param1|param2` means either param1 or param2, all `node` are always a number that refers to a dupe (0 is the main node and is allowed in some commands)*  
 *Note 2: Check the [Commands Page](https://github.com/neo3587/dupmn/wiki/Commands) for extended info and usage examples of each command.*
 
 # <a name ="usage-example"></a> Usage example
