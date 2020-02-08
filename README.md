@@ -138,8 +138,6 @@ A VPS doesn't have unlimited resources, creating too many instances may cause Ou
 
 # <a name ="additional"></a> Additional
 
-For experienced users that wants some custom automation or parsable data, check <a href="https://github.com/neo3587/dupmn/wiki/JSON-API">the JSON API</a>
-
 ```
 BTC Donations:   3F6J19DmD5jowwwQbE9zxXoguGPVR716a7
 ETH Donations:   0x7F9D6d654aEb3375A2974294a0911223d5d1DA52
